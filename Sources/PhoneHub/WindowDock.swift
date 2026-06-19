@@ -47,12 +47,14 @@ func findIPhoneMirroringApp() -> NSRunningApplication? {
 
 @MainActor
 @discardableResult
-func dockWindow(ownerName: String, into rect: CGRect) throws -> CGSize {
+func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) throws -> CGSize {
     guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
 
     let app = findRunningApplication(ownerName: ownerName)
     guard let app else { throw WindowDockError.appNotFound(ownerName) }
-    app.activate()
+    if activate {
+        app.activate()
+    }
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(appElement, 0.4)
@@ -83,11 +85,11 @@ func dockWindow(ownerName: String, into rect: CGRect) throws -> CGSize {
 
 @MainActor
 @discardableResult
-func dockWindow(byTitle titleSubstring: String, into rect: CGRect) throws -> CGSize {
+func dockWindow(byTitle title: String, processIdentifier: pid_t, into rect: CGRect) throws -> CGSize {
     guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
 
-    guard let window = findWindow(titleContaining: titleSubstring) else {
-        throw WindowDockError.windowNotFound(titleSubstring)
+    guard let window = findWindow(title: title, processIdentifier: processIdentifier) else {
+        throw WindowDockError.windowNotFound(title)
     }
 
     AXUIElementSetMessagingTimeout(window, 0.4)
@@ -149,26 +151,19 @@ private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
 }
 
 @MainActor
-private func findWindow(titleContaining titleSubstring: String) -> AXUIElement? {
-    for app in NSWorkspace.shared.runningApplications {
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(appElement, 0.2)
+private func findWindow(title: String, processIdentifier: pid_t) -> AXUIElement? {
+    let appElement = AXUIElementCreateApplication(processIdentifier)
+    AXUIElementSetMessagingTimeout(appElement, 0.2)
 
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
-              let windows = value as? [AXUIElement] else {
-            continue
-        }
-
-        if let window = windows.first(where: { window in
-            readAXTitle(window)?.localizedCaseInsensitiveContains(titleSubstring) == true
-        }) {
-            app.activate()
-            return window
-        }
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else {
+        return nil
     }
 
-    return nil
+    return windows.first { window in
+        readAXTitle(window) == title
+    }
 }
 
 @MainActor

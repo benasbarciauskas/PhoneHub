@@ -89,6 +89,10 @@ public final class ScrcpyController {
         lastState = .stopped
     }
 
+    public func processIdentifier(for serial: String) -> pid_t? {
+        processes[serial]?.processIdentifier
+    }
+
     public func stopAll() {
         let serials = Array(processes.keys)
         serials.forEach { stop(serial: $0) }
