@@ -2,11 +2,26 @@ import Foundation
 import Observation
 import PhoneHubCore
 
+enum StageLayout: String, CaseIterable, Identifiable {
+    case focus
+    case wall
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .focus: return "Focus"
+        case .wall: return "Wall"
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class DeviceStore {
     var devices: [Device] = []
     var focusedDevice: Device?
+    var layout: StageLayout = .focus
     var toolMissing = false
 
     /// Re-run discovery off the main actor, then publish.

@@ -14,16 +14,27 @@ struct Stage: View {
     @State private var stageWindow: NSWindow?
 
     private let mirrorInset: CGFloat = 12
+    private let wallInset: CGFloat = 16
+    private let wallSpacing: CGFloat = 12
     private let sidebarWidth: CGFloat = 240
 
     var body: some View {
         ZStack {
             Theme.bg
-            PlaceholderView(placeholder: stageState.placeholder)
+            if store.layout == .wall {
+                WallGridView(devices: wallDevices,
+                             placeholders: stageState.wallPlaceholders,
+                             inset: wallInset,
+                             spacing: wallSpacing)
+            } else {
+                PlaceholderView(placeholder: stageState.placeholder)
+            }
         }
         .background(StageRectReader { rect in
             stageState.stageRect = rect
-            if stageState.activeDevice?.id != store.focusedDevice?.id {
+            if store.layout == .wall {
+                scheduleDockSync()
+            } else if stageState.activeDevice?.id != store.focusedDevice?.id {
                 focus(store.focusedDevice)
             }
         } onWindowFrameChange: {
@@ -32,17 +43,53 @@ struct Stage: View {
             stageWindow = window
         })
         .onAppear {
-            focus(store.focusedDevice)
+            syncLayout()
         }
         .onChange(of: store.focusedDevice?.id) { _, _ in
-            focus(store.focusedDevice)
+            syncLayout()
+        }
+        .onChange(of: store.layout) { _, _ in
+            syncLayout()
+        }
+        .onChange(of: store.devices) { _, _ in
+            if store.layout == .wall {
+                syncLayout()
+            }
         }
         .onDisappear {
             dockingTask?.cancel()
             redockTask?.cancel()
+            stopWall()
             stop(device: stageState.activeDevice)
         }
         .animation(Theme.focusSpring, value: store.focusedDevice?.id)
+        .animation(Theme.focusSpring, value: store.layout)
+    }
+
+    private var wallDevices: [Device] {
+        Array(store.devices.filter { device in
+            switch device.platform {
+            case .android:
+                return device.isReady
+            case .ios:
+                return device.status == "connected"
+            }
+        }.prefix(9))
+    }
+
+    private func syncLayout() {
+        switch store.layout {
+        case .focus:
+            stopWall()
+            focus(store.focusedDevice)
+        case .wall:
+            if let activeDevice = stageState.activeDevice {
+                stop(device: activeDevice)
+            }
+            stageState.activeDevice = nil
+            stageState.isDocked = false
+            syncWall()
+        }
     }
 
     private func focus(_ device: Device?) {
@@ -135,7 +182,12 @@ struct Stage: View {
         redockTask = Task {
             try? await Task.sleep(nanoseconds: 180_000_000)
             guard !Task.isCancelled else { return }
-            resyncDockedWindow()
+            switch store.layout {
+            case .focus:
+                resyncDockedWindow()
+            case .wall:
+                syncWall()
+            }
         }
     }
 
@@ -177,6 +229,143 @@ struct Stage: View {
         case .ios:
             mirroringController.stop()
         }
+    }
+
+    private func syncWall() {
+        dockingTask?.cancel()
+        guard stageState.stageRect.width > 0, stageState.stageRect.height > 0 else {
+            stageState.wallPlaceholders = [:]
+            return
+        }
+
+        let devices = wallDevices
+        let activeIDs = Set(devices.map(\.id))
+        let staleAndroidSerials = stageState.wallAndroidSerials.subtracting(activeIDs)
+        staleAndroidSerials.forEach { scrcpyController.stop(serial: $0) }
+        stageState.wallAndroidSerials.subtract(staleAndroidSerials)
+        stageState.wallPlaceholders = stageState.wallPlaceholders.filter { activeIDs.contains($0.key) }
+        if devices.isEmpty {
+            stageState.wallPlaceholders = ["empty": StagePlaceholder(title: "No ready devices",
+                                                                     detail: "Connected devices appear in the sidebar.")]
+            return
+        }
+
+        let rects = gridTileRects(count: devices.count,
+                                  within: stageState.stageRect,
+                                  inset: wallInset,
+                                  spacing: wallSpacing)
+        let liveIOSID = wallLiveIOSDevice(in: devices)?.id
+        if liveIOSID == nil, stageState.wallIOSDeviceID != nil {
+            mirroringController.stop()
+            stageState.wallIOSDeviceID = nil
+        }
+
+        for (device, rect) in zip(devices, rects) {
+            switch device.platform {
+            case .android:
+                syncWallAndroid(device, rect: rect)
+            case .ios:
+                if device.id == liveIOSID {
+                    syncWallIOS(device, rect: rect)
+                } else {
+                    stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                        title: device.model,
+                        detail: "iPhone Mirroring shows one iPhone at a time"
+                    )
+                }
+            }
+        }
+    }
+
+    private func wallLiveIOSDevice(in devices: [Device]) -> Device? {
+        if let focused = store.focusedDevice,
+           focused.platform == .ios,
+           let device = devices.first(where: { $0.id == focused.id }) {
+            return device
+        }
+
+        return devices.first { $0.platform == .ios }
+    }
+
+    private func syncWallAndroid(_ device: Device, rect: CGRect) {
+        guard isAccessibilityTrusted() else {
+            requestAccessibilityIfNeeded()
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                title: device.model,
+                detail: "Enable Accessibility for PhoneHub in System Settings -> Privacy -> Accessibility"
+            )
+            return
+        }
+
+        if !stageState.wallAndroidSerials.contains(device.id) {
+            let process = scrcpyController.launch(serial: device.id, frame: rect)
+            if process == nil, scrcpyController.lastState == .missingTool {
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                          detail: "scrcpy not installed - brew install scrcpy")
+                return
+            } else if process == nil {
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                          detail: "scrcpy failed to start.")
+                return
+            }
+            stageState.wallAndroidSerials.insert(device.id)
+        }
+
+        do {
+            try dockWindow(byTitle: "PhoneHub-\(device.id)", into: rect)
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                      detail: nil)
+        } catch {
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                title: device.model,
+                detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            )
+            if case WindowDockError.windowNotFound = error {
+                scheduleDockSync()
+            }
+        }
+    }
+
+    private func syncWallIOS(_ device: Device, rect: CGRect) {
+        guard isAccessibilityTrusted() else {
+            requestAccessibilityIfNeeded()
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                title: device.model,
+                detail: "Enable Accessibility for PhoneHub in System Settings -> Privacy -> Accessibility"
+            )
+            return
+        }
+
+        stageState.wallPlaceholders[device.id] = StagePlaceholder(title: "Docking \(device.model)...",
+                                                                  detail: nil)
+        stageState.wallIOSDeviceID = device.id
+        dockingTask = Task {
+            do {
+                try await mirroringController.dock(into: rect)
+                guard !Task.isCancelled, store.layout == .wall else { return }
+                try dockWindow(ownerName: "com.apple.ScreenContinuity", into: rect)
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                          detail: nil)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, store.layout == .wall else { return }
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                    title: device.model,
+                    detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private func stopWall() {
+        stageState.wallAndroidSerials.forEach { scrcpyController.stop(serial: $0) }
+        if stageState.wallIOSDeviceID != nil {
+            mirroringController.stop()
+        }
+        stageState.wallAndroidSerials.removeAll()
+        stageState.wallIOSDeviceID = nil
+        stageState.wallPlaceholders.removeAll()
     }
 
     private func growStageWindowIfNeeded(forMirrorSize mirrorSize: CGSize) -> Bool {
@@ -236,8 +425,65 @@ private final class StageState {
     var activeDevice: Device?
     var stageRect: CGRect = .zero
     var isDocked = false
+    var wallAndroidSerials: Set<String> = []
+    var wallIOSDeviceID: String?
+    var wallPlaceholders: [String: StagePlaceholder] = [:]
     var placeholder = StagePlaceholder(title: "Select a device",
                                        detail: "Connected devices appear in the sidebar.")
+}
+
+private struct WallGridView: View {
+    let devices: [Device]
+    let placeholders: [String: StagePlaceholder]
+    let inset: CGFloat
+    let spacing: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            let visibleDevices = devices.isEmpty ? [Device(id: "empty",
+                                                           platform: .ios,
+                                                           model: "No ready devices",
+                                                           osVersion: "",
+                                                           status: "connected")] : devices
+            let rects = gridTileRects(count: visibleDevices.count,
+                                      within: CGRect(origin: .zero, size: proxy.size),
+                                      inset: inset,
+                                      spacing: spacing)
+            ForEach(Array(zip(visibleDevices, rects)), id: \.0.id) { device, rect in
+                WallTileView(placeholder: placeholders[device.id] ?? StagePlaceholder(title: device.model,
+                                                                                       detail: nil))
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+            }
+        }
+    }
+}
+
+private struct WallTileView: View {
+    let placeholder: StagePlaceholder
+
+    var body: some View {
+        VStack(spacing: Theme.s2) {
+            Text(placeholder.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            if let detail = placeholder.detail {
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.subtext)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(Theme.s3)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.surface.opacity(0.68))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+            .strokeBorder(Theme.border, lineWidth: 1))
+    }
 }
 
 private struct PlaceholderView: View {

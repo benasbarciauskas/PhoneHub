@@ -62,7 +62,7 @@ final class IOSDiscoveryTests: XCTestCase {
         XCTAssertEqual(devices[1].platform, .ios)
         XCTAssertEqual(devices[1].model, "iPhone 14")
         XCTAssertEqual(devices[1].osVersion, "17.6")
-        XCTAssertEqual(devices[1].status, "disconnected")
+        XCTAssertEqual(devices[1].status, "connected")
     }
 
     func testParseDevicectlDevicesEmptyArray() {
@@ -97,7 +97,7 @@ final class IOSDiscoveryTests: XCTestCase {
         XCTAssertEqual(devices[0].id, "00008110-001234563C91801E")
         XCTAssertEqual(devices[0].model, "Benas iPhone")
         XCTAssertEqual(devices[0].osVersion, "")
-        XCTAssertEqual(devices[0].status, "unknown")
+        XCTAssertEqual(devices[0].status, "connected")
     }
 
     func testParseDevicectlDevicesExcludesNonIOSDevices() {

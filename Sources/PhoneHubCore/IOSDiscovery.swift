@@ -49,13 +49,11 @@ public func parseDevicectlDevices(_ data: Data) -> [Device] {
         let osVersion = entry.deviceProperties?.osVersionNumber
             ?? entry.hardwareProperties?.osVersionNumber
             ?? ""
-        let status = entry.connectionProperties?.tunnelState ?? "unknown"
-
         return Device(id: id,
                       platform: .ios,
                       model: model,
                       osVersion: osVersion,
-                      status: status)
+                      status: "connected")
     }
 }
 

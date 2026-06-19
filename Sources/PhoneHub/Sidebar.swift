@@ -9,6 +9,14 @@ struct Sidebar: View {
             HStack {
                 Text("Devices").font(.headline).foregroundStyle(Theme.text)
                 Spacer()
+                Picker("Layout", selection: $store.layout) {
+                    ForEach(StageLayout.allCases) { layout in
+                        Text(layout.title).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 112)
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.plain).foregroundStyle(Theme.subtext)
             }
