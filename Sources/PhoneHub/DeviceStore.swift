@@ -6,10 +6,8 @@ import PhoneHubCore
 @MainActor
 final class DeviceStore {
     var devices: [Device] = []
-    var focusedID: Device.ID?
+    var focusedDevice: Device?
     var toolMissing = false
-
-    var focused: Device? { devices.first { $0.id == focusedID } }
 
     /// Re-run discovery off the main actor, then publish.
     func refresh() {
@@ -19,13 +17,17 @@ final class DeviceStore {
             await MainActor.run {
                 self.toolMissing = missing
                 self.devices = found
-                if self.focusedID == nil { self.focusedID = found.first?.id }
-                else if !found.contains(where: { $0.id == self.focusedID }) {
-                    self.focusedID = found.first?.id
+                if let focused = self.focusedDevice,
+                   let updated = found.first(where: { $0.id == focused.id }) {
+                    self.focusedDevice = updated
+                } else {
+                    self.focusedDevice = found.first
                 }
             }
         }
     }
 
-    func focus(_ id: Device.ID) { focusedID = id }
+    func setFocused(_ device: Device) {
+        focusedDevice = device
+    }
 }

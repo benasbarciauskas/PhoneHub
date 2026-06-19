@@ -6,10 +6,14 @@
     <key>CFBundleDisplayName</key><string>PhoneHub</string>
     <key>CFBundleIdentifier</key><string>com.benas.phonehub</string>
     <key>CFBundleExecutable</key><string>PhoneHub</string>
+    <key>CFBundleIconFile</key><string>PhoneHub</string>
+    <key>CFBundleIconName</key><string>PhoneHub</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>PhoneHub opens iPhone Mirroring so it can dock the mirror window into the dashboard.</string>
 </dict>
 </plist>

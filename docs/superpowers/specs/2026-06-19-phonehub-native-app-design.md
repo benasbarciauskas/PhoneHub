@@ -4,121 +4,82 @@ _Date: 2026-06-19 · Status: approved_
 
 ## 1. Scope
 
-PhoneHub is a native **SwiftUI macOS app**: a command-center dashboard to
-**manually** control the owner's own iPhones and Android phones from one Mac —
-discover connected devices, view the focused device's live screen, and
-click-to-tap / swipe / type on it.
+PhoneHub is a native **SwiftUI macOS dashboard** for manually controlling the
+owner's own iPhones and Android phones from one Mac. It discovers connected
+devices, lets the user focus one device, launches that platform's native mirror
+window, and docks the mirror into the PhoneHub stage rectangle.
 
-**Out of scope (hard guardrail):** no automation, no anti-detection /
-"humanization for evasion", no proxy/SIM rotation, no multi-account-per-device
-farm orchestration. Single user, owner's own devices and accounts only. The
-shipped Python tkinter MVP is **retired** in favour of this native app.
+**Out of scope:** PhoneHub does not capture pixels, embed live streams, forward
+synthetic clicks, run anti-detection logic, rotate proxies/SIMs, or orchestrate
+multi-account device farms.
 
 ## 2. Architecture
 
-Control backend = **WebDriverAgent (iOS)** + **scrcpy/adb (Android)** driven
-directly (Approach 2 — "Appium-lite"). No Appium server / device-farm
-orchestration layer (built for parallel test allocation, which we don't need).
-WDA and scrcpy are the same engines a device farm wraps; PhoneHub talks to them
-directly for lowest latency.
+PhoneHub uses an orchestrated mirror-docking architecture:
 
-### Components
+- **Android:** launch `scrcpy -s <serial>` with `--window-borderless`,
+  `--window-x`, `--window-y`, `--window-width`, `--window-height`, and
+  `--window-title`, then let scrcpy own the live mirror and input path.
+- **iOS:** activate iPhone Mirroring (`com.apple.ScreenContinuity`), find its
+  running app/window, and set `kAXPositionAttribute` / `kAXSizeAttribute` via
+  Accessibility to dock it into the stage.
+- **PhoneHub:** remains the dashboard and coordinator. It handles discovery,
+  focus, native mirror launch/stop, stage rectangle calculation, and degraded
+  state messages.
 
-- **`PhoneHubApp`** — SwiftUI app entry, single window (sidebar + stage).
-- **`DeviceStore`** (`@Observable`) — runs discovery (shells `idevice_id` /
-  `ideviceinfo` for iOS, `adb devices -l` + `getprop` for Android), holds
-  `[Device]`, supports manual refresh and periodic per-device sidebar snapshots.
-- **`Device`** — `platform` (ios/android), `udid`, `model`, `osVersion`,
-  `status`, `focused`.
-- **`WDAClient`** (iOS) — launches/owns a WebDriverAgent session per iPhone
-  (port-per-device), exposes the MJPEG stream URL and REST endpoints for
-  tap / swipe / type / home / `/status`.
-- **`AndroidController`** — `adb`/`scrcpy`; live frames via `adb exec-out
-  screencap` polling, input via `adb shell input tap/swipe/text`.
-- **`StreamView`** — decodes the MJPEG / frame source into `NSImage`, renders in
-  SwiftUI, maps a click in the view to device coordinates and dispatches a tap.
-- **`Sidebar`** — scrollable device rows (status dot · model · mode · snapshot).
-- **`Stage`** — focused device live screen + control rail (home / back /
-  screenshot / open-in-mirror).
+## 3. Components
 
-## 3. Data flow
+- **`PhoneHubApp`** — SwiftUI app entry, single hidden-titlebar window with
+  sidebar and stage.
+- **`DeviceStore`** (`@Observable`) — discovers Android via `adb devices -l` and
+  iOS via `xcrun devicectl`, stores `[Device]`, and tracks `focusedDevice`.
+- **`AndroidController`** — Android discovery only.
+- **`ScrcpyController`** — validates serials, builds scrcpy argv, resolves
+  `scrcpy`, launches it non-blocking, tracks one process per serial, and stops
+  the previous process when focus changes.
+- **`MirroringController`** — activates iPhone Mirroring and asks `WindowDock` to
+  position its window.
+- **`WindowDock`** — AppKit/AX helper for Accessibility trust, iPhone Mirroring
+  discovery, and window positioning.
+- **`Sidebar`** — device list and refresh control.
+- **`Stage`** — computes the stage rectangle in global screen coordinates,
+  converts it for AX/window placement, launches or docks the focused mirror, and
+  shows placeholder text for empty, docking, not-ready, and degraded states.
 
-`discover()` → `DeviceStore.[Device]` → sidebar rows. Select a device → focus →
-start stream (WDA MJPEG for iOS, screencap poll for Android) → `StreamView`
-renders frames → user clicks → coordinate map → WDA/adb tap → device reacts →
-next frame shows the result.
+## 4. Data Flow
 
-Only the **focused** device streams live (Command-center layout, 5–10 devices
-target). Sidebar rows show an occasional still snapshot, not a live stream — so
-there is at most one active stream at a time and performance scales to 10+.
+`discover()` -> `DeviceStore.devices` -> sidebar rows. Selecting a row sets
+`focusedDevice`. `Stage` stops the previously focused mirror, measures its
+screen-space stage rectangle, then launches scrcpy for Android or iPhone
+Mirroring for iOS and docks that window into the stage. If `scrcpy` is missing
+or Accessibility is not granted, the stage shows a clear action message instead
+of crashing.
 
-## 4. Coordinate mapping (the tricky bit)
+Only the focused device has an active mirror window managed by PhoneHub.
 
-`StreamView` knows the displayed-image rect (with aspect-fit letterboxing) and
-the device native resolution (WDA window size, or `adb wm size`). On click:
-strip the letterbox offset, scale view-point → device pixels, send tap. This is
-a **pure function** `viewPointToDevicePoint(click, viewRect, imageRect,
-deviceSize)` and is unit-tested (letterbox on both axes, edge points, rounding).
+## 5. Packaging
 
-## 5. iOS WebDriverAgent setup
+`build-app.sh` builds `PhoneHub.app` and signs it with a stable self-signed
+identity named `PhoneHub Self-Signed` stored in
+`phonehub-signing.keychain-db`. Stable signing is required because macOS
+Accessibility grants are tied to the app's signing identity/code identity; ad-hoc
+signing can force users to re-grant access after every rebuild.
 
-One-time per iPhone: build + sign WebDriverAgent via Xcode (a free Apple ID
-works; 7-day re-sign). On focus, PhoneHub launches WDA for that device, polls
-`/status` until ready, then opens the MJPEG stream. Android needs only
-`adb`/`scrcpy` — no signing. The iOS path is **deferred past the first slice**.
+The bundle id remains `com.benas.phonehub`.
 
-## 6. Vertical slice (first build)
+## 6. Error Handling
 
-Prove the full pipe end-to-end on **one Android device** (no WDA signing needed):
+- Missing `adb` affects Android discovery and is shown in the sidebar.
+- Missing `scrcpy` is shown in the stage: `scrcpy not installed - brew install
+  scrcpy`.
+- Missing Accessibility trust prompts macOS and shows: `Enable Accessibility for
+  PhoneHub in System Settings -> Privacy -> Accessibility`.
+- Device disconnects refresh back to the first available device or empty state.
 
-1. App launches → `DeviceStore` discovers connected devices → sidebar lists them,
-   rendered with the OLED design-system tokens.
-2. Select an Android → Stage shows its live screen (screencap poll).
-3. Click on the stage → `adb shell input tap` at mapped coords → device reacts,
-   visible in the next frame.
-4. Screenshot button saves a PNG.
+## 7. Testing
 
-**Deferred:** iOS / WDA, sidebar live snapshots, full control rail, motion
-polish, multi-device niceties.
-
-## 7. Design system
-
-A `Theme` enum + SwiftUI view modifiers encode the **OLED Black** palette and
-the design judgment from the owner's design skills (taste, ui-ux-pro-max SwiftUI
-track, Emil Kowalski motion, impeccable/polish finishing).
-
-Tokens: bg `#000000`, surface `#0b0b0d`, elevated `#1c1c1f`, border `#1c1c1f`,
-text `#f5f5f7`, subtext `#8a8a8e`, accent `#0a84ff`, status green / amber / red.
-4-pt spacing grid, defined type scale, corner radii. Motion = fast, purposeful
-springs (focus transition, sidebar selection) per Emil's philosophy — no gratuitous
-animation. A `polish` / `impeccable` finishing pass runs before ship.
-
-## 8. Packaging
-
-Matches the owner's sibling Mac apps (Mirror Deck, MacCare): XcodeGen project +
-`build-app.sh`, ad-hoc code-signed, installs to `/Applications`. **No
-Accessibility grant** required (control is via WDA/adb, not the AX API). Locates
-`adb` / `scrcpy` / `libimobiledevice` on the Homebrew paths and shows guidance if
-a tool is missing.
-
-## 9. Error handling
-
-- Missing CLI tool (`adb`/`idevice_id`/`scrcpy`) → clear in-app banner with the
-  `brew install` hint; never crash.
-- Device disconnect → its row goes stale/red, any active stream stops cleanly.
-- WDA fails to launch → actionable error surfaced in the stage area.
-- Discovery never throws on a missing/zero-exit tool — degrades to empty.
-
-## 10. Testing
-
-- **Unit:** coordinate-mapping math; MJPEG frame parser; device-discovery output
-  parsing.
-- **UI:** manual smoke — run the app, confirm discovery + live frame + tap on a
-  real Android.
-
-## 11. Repo / process
-
-Retire the Python MVP (`src/` tkinter + discovery, `main.py`, `requirements.txt`,
-`tests/`). Build the native app in worktree `feat/native-foundation`. Ship the
-vertical slice once review is clean + smoke-tested + CI green, then iterate
-(iOS/WDA is the next phase).
+- **Unit:** discovery parsing, shell tool behavior, scrcpy argv construction, and
+  invalid serial rejection.
+- **Manual smoke:** build `PhoneHub.app`, grant Accessibility, connect an Android
+  device with scrcpy installed, select it, and confirm the scrcpy window docks.
+  Then select an iOS device and confirm iPhone Mirroring docks.

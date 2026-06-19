@@ -1,5 +1,4 @@
 import Foundation
-import CoreGraphics
 
 public enum AndroidController {
 
@@ -27,35 +26,4 @@ public enum AndroidController {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Native screen size in pixels (Override wins over Physical).
-    public static func screenSize(serial: String) -> CGSize? {
-        guard isValidSerial(serial),
-              let res = try? runTool("adb", adbArgs(serial: serial, "shell", "wm", "size")),
-              res.exitCode == 0,
-              let s = String(data: res.stdout, encoding: .utf8) else { return nil }
-        return parseWmSize(s)
-    }
-
-    /// Capture a PNG frame of the device screen as raw bytes.
-    public static func captureFrame(serial: String) -> Data? {
-        guard isValidSerial(serial),
-              let res = try? runTool("adb", adbScreencapArgs(serial: serial)),
-              res.exitCode == 0, !res.stdout.isEmpty else { return nil }
-        return res.stdout
-    }
-
-    /// Tap at device pixel coordinates.
-    @discardableResult
-    public static func tap(serial: String, x: Int, y: Int) -> Bool {
-        guard isValidSerial(serial),
-              let res = try? runTool("adb", adbTapArgs(serial: serial, x: x, y: y)) else { return false }
-        return res.exitCode == 0
-    }
-
-    /// Save a screenshot PNG to `url`. Returns success.
-    @discardableResult
-    public static func saveScreenshot(serial: String, to url: URL) -> Bool {
-        guard let data = captureFrame(serial: serial) else { return false }
-        return (try? data.write(to: url)) != nil
-    }
 }

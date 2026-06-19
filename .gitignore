@@ -35,3 +35,7 @@ screenshots/
 *.app/
 .swiftpm/
 PhoneHub.app/
+*.icns
+*.iconset/
+master-icon.png
+phonehub-master-icon.png
