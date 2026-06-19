@@ -21,10 +21,12 @@ enum WindowDockError: LocalizedError {
     }
 }
 
+@MainActor
 func isAccessibilityTrusted() -> Bool {
     AXIsProcessTrusted()
 }
 
+@MainActor
 @discardableResult
 func requestAccessibilityIfNeeded() -> Bool {
     guard !isAccessibilityTrusted() else { return true }
@@ -32,12 +34,14 @@ func requestAccessibilityIfNeeded() -> Bool {
     return AXIsProcessTrustedWithOptions(options)
 }
 
+@MainActor
 func findIPhoneMirroringApp() -> NSRunningApplication? {
     let running = NSWorkspace.shared.runningApplications
     return running.first { $0.bundleIdentifier == "com.apple.ScreenContinuity" }
         ?? running.first { $0.localizedName == "iPhone Mirroring" }
 }
 
+@MainActor
 func dockWindow(ownerName: String, into rect: CGRect) throws {
     guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
 
@@ -78,6 +82,7 @@ func dockWindow(ownerName: String, into rect: CGRect) throws {
     }
 }
 
+@MainActor
 private func findRunningApplication(ownerName: String) -> NSRunningApplication? {
     let running = NSWorkspace.shared.runningApplications
     return running.first { $0.bundleIdentifier == ownerName }

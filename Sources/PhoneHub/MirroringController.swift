@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import PhoneHubCore
 
+@MainActor
 final class MirroringController {
     private let bundleID = "com.apple.ScreenContinuity"
 
@@ -20,15 +21,34 @@ final class MirroringController {
         }
     }
 
-    func dock(into rect: CGRect) throws {
+    func dock(into rect: CGRect) async throws {
         activate()
 
-        let deadline = Date().addingTimeInterval(3)
-        while findIPhoneMirroringApp() == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        let deadline = Date().addingTimeInterval(6)
+        var lastError: Error?
+
+        while Date() < deadline {
+            do {
+                try dockWindow(ownerName: bundleID, into: rect)
+                return
+            } catch let error as WindowDockError {
+                switch error {
+                case .appNotFound, .windowNotFound:
+                    lastError = error
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                default:
+                    throw error
+                }
+            } catch {
+                throw error
+            }
         }
 
-        try dockWindow(ownerName: bundleID, into: rect)
+        do {
+            try dockWindow(ownerName: bundleID, into: rect)
+        } catch {
+            throw lastError ?? error
+        }
     }
 
     func stop() {
