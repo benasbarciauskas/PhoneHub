@@ -14,7 +14,7 @@ final class DeviceStore {
     /// Re-run discovery off the main actor, then publish.
     func refresh() {
         Task.detached(priority: .userInitiated) {
-            let found = AndroidController.discover()       // Android only for this slice
+            let found = AndroidController.discover() + IOSController.discover()
             let missing = resolveTool("adb") == nil
             await MainActor.run {
                 self.toolMissing = missing
