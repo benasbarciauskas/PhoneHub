@@ -23,3 +23,9 @@ screenshots/
 
 # macOS
 .DS_Store
+.claude-flow/
+.swarm/
+.env.*
+*.session.json
+*.pem
+*.key
