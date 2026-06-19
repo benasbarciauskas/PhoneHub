@@ -8,6 +8,7 @@ struct StreamView: View {
     @State private var frame: NSImage?
     @State private var deviceSize: CGSize = .init(width: 1080, height: 2340)
     @State private var timer: Timer?
+    @State private var isPolling = false
 
     var body: some View {
         GeometryReader { geo in
@@ -42,11 +43,15 @@ struct StreamView: View {
     private func restart() { stop(); frame = nil; start() }
 
     private func poll() {
+        guard !isPolling else { return }
+        isPolling = true
         let serial = serial
         Task.detached(priority: .userInitiated) {
-            guard let data = AndroidController.captureFrame(serial: serial),
-                  let img = NSImage(data: data) else { return }
-            await MainActor.run { self.frame = img }
+            let img = AndroidController.captureFrame(serial: serial).flatMap(NSImage.init(data:))
+            await MainActor.run {
+                if let img { self.frame = img }
+                self.isPolling = false
+            }
         }
     }
 }
