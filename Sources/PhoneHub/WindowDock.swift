@@ -6,6 +6,7 @@ enum WindowDockError: LocalizedError {
     case accessibilityNotTrusted
     case appNotFound(String)
     case windowNotFound(String)
+    case windowSizeUnavailable(String)
     case setFrameFailed
 
     var errorDescription: String? {
@@ -16,6 +17,8 @@ enum WindowDockError: LocalizedError {
             return "\(ownerName) is not running"
         case .windowNotFound(let ownerName):
             return "No \(ownerName) window found"
+        case .windowSizeUnavailable(let ownerName):
+            return "Could not read \(ownerName) window size"
         case .setFrameFailed:
             return "Could not move mirror window"
         }
@@ -43,7 +46,8 @@ func findIPhoneMirroringApp() -> NSRunningApplication? {
 }
 
 @MainActor
-func dockWindow(ownerName: String, into rect: CGRect) throws {
+@discardableResult
+func dockWindow(ownerName: String, into rect: CGRect) throws -> CGSize {
     guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
 
     let app = findRunningApplication(ownerName: ownerName)
@@ -65,36 +69,16 @@ func dockWindow(ownerName: String, into rect: CGRect) throws {
     AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, false as CFTypeRef)
     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
-    let currentSize = readAXSize(window) ?? CGSize(width: 9, height: 19.5)
-    let initialAspect = aspectRatio(for: currentSize)
-    let initialRect = aspectFitRect(aspectRatio: initialAspect, in: rect, inset: 8)
+    guard let mirrorSize = readAXSize(window) else {
+        throw WindowDockError.windowSizeUnavailable(ownerName)
+    }
 
-    guard setAXFrame(window, to: initialRect) else {
+    let centeredRect = centeredRect(forContentSize: mirrorSize, within: rect, inset: 12)
+    guard setAXPosition(window, to: centeredRect.origin) else {
         throw WindowDockError.setFrameFailed
     }
 
-    let actualSize = readAXSize(window) ?? initialRect.size
-    let finalAspect = aspectRatio(for: actualSize)
-    let finalRect = aspectFitRect(aspectRatio: finalAspect, in: rect, inset: 8)
-
-    guard setAXFrame(window, to: finalRect) else {
-        throw WindowDockError.setFrameFailed
-    }
-}
-
-@MainActor
-private func findRunningApplication(ownerName: String) -> NSRunningApplication? {
-    let running = NSWorkspace.shared.runningApplications
-    return running.first { $0.bundleIdentifier == ownerName }
-        ?? running.first { $0.localizedName == ownerName }
-        ?? running.first { $0.localizedName?.localizedCaseInsensitiveCompare(ownerName) == .orderedSame }
-}
-
-private func aspectRatio(for size: CGSize) -> CGFloat {
-    guard size.width > 0, size.height > 0 else {
-        return 9 / 19.5
-    }
-    return size.width / size.height
+    return mirrorSize
 }
 
 private func readAXSize(_ window: AXUIElement) -> CGSize? {
@@ -115,18 +99,19 @@ private func readAXSize(_ window: AXUIElement) -> CGSize? {
     return size
 }
 
-private func setAXFrame(_ window: AXUIElement, to rect: CGRect) -> Bool {
-    var position = rect.origin
-    var size = rect.size
-    guard let positionValue = AXValueCreate(.cgPoint, &position),
-          let sizeValue = AXValueCreate(.cgSize, &size) else {
+private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
+    var position = point
+    guard let positionValue = AXValueCreate(.cgPoint, &position) else {
         return false
     }
 
-    // AX applies mirror window geometry most reliably when position brackets size.
-    let firstPositionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-    let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-    let finalPositionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) == .success
+}
 
-    return firstPositionResult == .success && sizeResult == .success && finalPositionResult == .success
+@MainActor
+private func findRunningApplication(ownerName: String) -> NSRunningApplication? {
+    let running = NSWorkspace.shared.runningApplications
+    return running.first { $0.bundleIdentifier == ownerName }
+        ?? running.first { $0.localizedName == ownerName }
+        ?? running.first { $0.localizedName?.localizedCaseInsensitiveCompare(ownerName) == .orderedSame }
 }

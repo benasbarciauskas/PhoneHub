@@ -1,29 +1,21 @@
 import CoreGraphics
 import Foundation
 
-public func aspectFitRect(aspectRatio: CGFloat, in container: CGRect, inset: CGFloat) -> CGRect {
+public func centeredRect(forContentSize contentSize: CGSize, within container: CGRect, inset: CGFloat) -> CGRect {
+    let width = max(0, contentSize.width)
+    let height = max(0, contentSize.height)
     let clampedInset = max(0, inset)
-    let insetContainer = container.insetBy(dx: clampedInset, dy: clampedInset)
-    let maxWidth = max(0, min(container.width, insetContainer.width))
-    let maxHeight = max(0, min(container.height, insetContainer.height))
+    let insetContainer = container.insetBy(dx: min(clampedInset, max(0, container.width / 2)),
+                                           dy: min(clampedInset, max(0, container.height / 2)))
 
-    guard maxWidth > 0, maxHeight > 0, aspectRatio > 0, aspectRatio.isFinite else {
-        return CGRect(x: container.midX, y: container.midY, width: 0, height: 0)
-    }
-
-    var width = maxWidth
-    var height = width / aspectRatio
-
-    if height > maxHeight {
-        height = maxHeight
-        width = height * aspectRatio
-    }
-
-    width = min(width, maxWidth, container.width)
-    height = min(height, maxHeight, container.height)
-
-    return CGRect(x: container.midX - width / 2,
-                  y: container.midY - height / 2,
+    return CGRect(x: insetContainer.midX - width / 2,
+                  y: insetContainer.midY - height / 2,
                   width: width,
                   height: height)
+}
+
+public func requiredStageSize(forMirrorSize mirrorSize: CGSize, inset: CGFloat) -> CGSize {
+    let clampedInset = max(0, inset)
+    return CGSize(width: max(0, mirrorSize.width) + 2 * clampedInset,
+                  height: max(0, mirrorSize.height) + 2 * clampedInset)
 }

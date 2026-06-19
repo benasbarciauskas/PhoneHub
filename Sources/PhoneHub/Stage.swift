@@ -11,6 +11,10 @@ struct Stage: View {
     @State private var stageState = StageState()
     @State private var dockingTask: Task<Void, Never>?
     @State private var redockTask: Task<Void, Never>?
+    @State private var stageWindow: NSWindow?
+
+    private let mirrorInset: CGFloat = 12
+    private let sidebarWidth: CGFloat = 240
 
     var body: some View {
         ZStack {
@@ -24,6 +28,8 @@ struct Stage: View {
             }
         } onWindowFrameChange: {
             scheduleDockSync()
+        } onWindowAvailable: { window in
+            stageWindow = window
         })
         .onAppear {
             focus(store.focusedDevice)
@@ -105,8 +111,12 @@ struct Stage: View {
         dockingTask = Task {
             do {
                 try await mirroringController.dock(into: stageState.stageRect)
+                let mirrorSize = try dockWindow(ownerName: "com.apple.ScreenContinuity", into: stageState.stageRect)
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = true
+                if growStageWindowIfNeeded(forMirrorSize: mirrorSize) {
+                    scheduleDockSync()
+                }
                 stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
                                                           detail: "iPhone Mirroring is positioned in the stage rectangle.")
             } catch is CancellationError {
@@ -141,7 +151,10 @@ struct Stage: View {
         do {
             switch device.platform {
             case .ios:
-                try dockWindow(ownerName: "com.apple.ScreenContinuity", into: stageState.stageRect)
+                let mirrorSize = try dockWindow(ownerName: "com.apple.ScreenContinuity", into: stageState.stageRect)
+                if growStageWindowIfNeeded(forMirrorSize: mirrorSize) {
+                    scheduleDockSync()
+                }
                 stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
                                                           detail: "iPhone Mirroring is positioned in the stage rectangle.")
             case .android:
@@ -164,6 +177,51 @@ struct Stage: View {
         case .ios:
             mirroringController.stop()
         }
+    }
+
+    private func growStageWindowIfNeeded(forMirrorSize mirrorSize: CGSize) -> Bool {
+        guard let window = stageWindow,
+              let screen = window.screen ?? NSScreen.main else {
+            return false
+        }
+
+        let requiredStage = requiredStageSize(forMirrorSize: mirrorSize, inset: mirrorInset)
+        let requiredWindowSize = CGSize(width: requiredStage.width + sidebarWidth,
+                                        height: requiredStage.height)
+        let currentFrame = window.frame
+        let visibleFrame = screen.visibleFrame
+
+        var targetWidth = max(currentFrame.width, window.minSize.width, requiredWindowSize.width)
+        var targetHeight = max(currentFrame.height, window.minSize.height, requiredWindowSize.height)
+
+        targetWidth = min(targetWidth, visibleFrame.width)
+        targetHeight = min(targetHeight, visibleFrame.height)
+
+        guard targetWidth > currentFrame.width + 0.5 || targetHeight > currentFrame.height + 0.5 else {
+            return false
+        }
+
+        let topY = currentFrame.maxY
+        var targetFrame = CGRect(x: currentFrame.minX,
+                                 y: topY - targetHeight,
+                                 width: targetWidth,
+                                 height: targetHeight)
+
+        if targetFrame.maxX > visibleFrame.maxX {
+            targetFrame.origin.x = visibleFrame.maxX - targetFrame.width
+        }
+        if targetFrame.minX < visibleFrame.minX {
+            targetFrame.origin.x = visibleFrame.minX
+        }
+        if targetFrame.minY < visibleFrame.minY {
+            targetFrame.origin.y = visibleFrame.minY
+        }
+        if targetFrame.maxY > visibleFrame.maxY {
+            targetFrame.origin.y = visibleFrame.maxY - targetFrame.height
+        }
+
+        window.setFrame(targetFrame, display: true, animate: false)
+        return true
     }
 }
 
@@ -206,26 +264,34 @@ private struct PlaceholderView: View {
 private struct StageRectReader: NSViewRepresentable {
     let onChange: (CGRect) -> Void
     let onWindowFrameChange: () -> Void
+    let onWindowAvailable: (NSWindow?) -> Void
 
     func makeNSView(context: Context) -> ReportingView {
-        ReportingView(onChange: onChange, onWindowFrameChange: onWindowFrameChange)
+        ReportingView(onChange: onChange,
+                      onWindowFrameChange: onWindowFrameChange,
+                      onWindowAvailable: onWindowAvailable)
     }
 
     func updateNSView(_ nsView: ReportingView, context: Context) {
         nsView.onChange = onChange
         nsView.onWindowFrameChange = onWindowFrameChange
+        nsView.onWindowAvailable = onWindowAvailable
         nsView.report()
     }
 
     final class ReportingView: NSView {
         var onChange: (CGRect) -> Void
         var onWindowFrameChange: () -> Void
+        var onWindowAvailable: (NSWindow?) -> Void
         private weak var observedWindow: NSWindow?
         private var observerTokens: [NSObjectProtocol] = []
 
-        init(onChange: @escaping (CGRect) -> Void, onWindowFrameChange: @escaping () -> Void) {
+        init(onChange: @escaping (CGRect) -> Void,
+             onWindowFrameChange: @escaping () -> Void,
+             onWindowAvailable: @escaping (NSWindow?) -> Void) {
             self.onChange = onChange
             self.onWindowFrameChange = onWindowFrameChange
+            self.onWindowAvailable = onWindowAvailable
             super.init(frame: .zero)
         }
 
@@ -240,6 +306,7 @@ private struct StageRectReader: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             installWindowObserversIfNeeded()
+            onWindowAvailable(window)
             report()
         }
 
@@ -263,6 +330,7 @@ private struct StageRectReader: NSViewRepresentable {
             removeWindowObservers()
             guard let window else { return }
             observedWindow = window
+            onWindowAvailable(window)
 
             let center = NotificationCenter.default
             let notifications: [NSNotification.Name] = [

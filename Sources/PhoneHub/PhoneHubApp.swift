@@ -11,7 +11,7 @@ struct PhoneHubApp: App {
                 Divider().overlay(Theme.border)
                 Stage(store: store)
             }
-            .frame(minWidth: 980, minHeight: 640)
+            .frame(minWidth: 980, minHeight: 720)
             .background(Theme.bg)
             .preferredColorScheme(.dark)
             .onAppear { store.refresh() }
