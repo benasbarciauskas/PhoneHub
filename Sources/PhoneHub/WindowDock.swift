@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import PhoneHubCore
 
 enum WindowDockError: LocalizedError {
     case accessibilityNotTrusted
@@ -64,20 +65,19 @@ func dockWindow(ownerName: String, into rect: CGRect) throws {
     AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, false as CFTypeRef)
     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
-    var position = rect.origin
-    var size = rect.size
-    guard let positionValue = AXValueCreate(.cgPoint, &position),
-          let sizeValue = AXValueCreate(.cgSize, &size) else {
+    let currentSize = readAXSize(window) ?? CGSize(width: 9, height: 19.5)
+    let initialAspect = aspectRatio(for: currentSize)
+    let initialRect = aspectFitRect(aspectRatio: initialAspect, in: rect, inset: 8)
+
+    guard setAXFrame(window, to: initialRect) else {
         throw WindowDockError.setFrameFailed
     }
 
-    // AX requires position to be set before size; repeat to ensure both take effect.
-    let positionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-    let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-    _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-    _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    let actualSize = readAXSize(window) ?? initialRect.size
+    let finalAspect = aspectRatio(for: actualSize)
+    let finalRect = aspectFitRect(aspectRatio: finalAspect, in: rect, inset: 8)
 
-    guard sizeResult == .success, positionResult == .success else {
+    guard setAXFrame(window, to: finalRect) else {
         throw WindowDockError.setFrameFailed
     }
 }
@@ -88,4 +88,45 @@ private func findRunningApplication(ownerName: String) -> NSRunningApplication? 
     return running.first { $0.bundleIdentifier == ownerName }
         ?? running.first { $0.localizedName == ownerName }
         ?? running.first { $0.localizedName?.localizedCaseInsensitiveCompare(ownerName) == .orderedSame }
+}
+
+private func aspectRatio(for size: CGSize) -> CGFloat {
+    guard size.width > 0, size.height > 0 else {
+        return 9 / 19.5
+    }
+    return size.width / size.height
+}
+
+private func readAXSize(_ window: AXUIElement) -> CGSize? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &value) == .success,
+          let value,
+          CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+
+    let axValue = value as! AXValue
+    var size = CGSize.zero
+    guard AXValueGetValue(axValue, .cgSize, &size),
+          size.width > 0,
+          size.height > 0 else {
+        return nil
+    }
+    return size
+}
+
+private func setAXFrame(_ window: AXUIElement, to rect: CGRect) -> Bool {
+    var position = rect.origin
+    var size = rect.size
+    guard let positionValue = AXValueCreate(.cgPoint, &position),
+          let sizeValue = AXValueCreate(.cgSize, &size) else {
+        return false
+    }
+
+    // AX applies mirror window geometry most reliably when position brackets size.
+    let firstPositionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    let finalPositionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+
+    return firstPositionResult == .success && sizeResult == .success && finalPositionResult == .success
 }
