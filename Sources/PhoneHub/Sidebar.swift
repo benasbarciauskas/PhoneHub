@@ -52,15 +52,7 @@ private struct DeviceRow: View {
     let selected: Bool
 
     var statusColor: Color {
-        if device.platform == .ios {
-            return device.status == "connected" ? Theme.ok : Theme.warn
-        }
-
-        switch device.status {
-        case "device": return Theme.ok
-        case "unauthorized": return Theme.warn
-        default: return Theme.err
-        }
+        sidebarStatusColor(for: device)
     }
 
     var body: some View {
@@ -70,11 +62,42 @@ private struct DeviceRow: View {
                 Text(device.model).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
                 Text(device.platform == .android ? "Android \(device.osVersion)" : "iOS \(device.osVersion)")
                     .font(.system(size: 11)).foregroundStyle(Theme.subtext)
+                if device.platform == .ios, device.status == "notConnected" {
+                    Text("not connected")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.subtext.opacity(0.72))
+                }
             }
             Spacer()
         }
         .padding(.vertical, Theme.s2).padding(.horizontal, Theme.s3)
         .background(selected ? Theme.elevated : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+    }
+}
+
+enum SidebarStatusColorRole: Equatable {
+    case ok
+    case warn
+    case err
+}
+
+func sidebarStatusColorRole(for device: Device) -> SidebarStatusColorRole {
+    if device.platform == .ios {
+        return device.status == "connected" ? .ok : .warn
+    }
+
+    switch device.status {
+    case "device": return .ok
+    case "unauthorized": return .warn
+    default: return .err
+    }
+}
+
+func sidebarStatusColor(for device: Device) -> Color {
+    switch sidebarStatusColorRole(for: device) {
+    case .ok: return Theme.ok
+    case .warn: return Theme.warn
+    case .err: return Theme.err
     }
 }

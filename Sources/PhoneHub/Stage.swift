@@ -114,7 +114,11 @@ struct Stage: View {
             return
         }
 
-        // iOS readiness is not tracked like Android so iOS devices always pass the dock check.
+        if let placeholder = stageNotConnectedIOSPlaceholder(for: device) {
+            stageState.placeholder = placeholder
+            return
+        }
+
         guard device.isReady || device.platform == .ios else {
             stageState.placeholder = StagePlaceholder(title: "\(device.model) is not ready",
                                                       detail: "Current status: \(device.status)")
@@ -414,9 +418,18 @@ struct Stage: View {
     }
 }
 
-private struct StagePlaceholder: Equatable {
+struct StagePlaceholder: Equatable {
     let title: String
     let detail: String?
+}
+
+func stageNotConnectedIOSPlaceholder(for device: Device) -> StagePlaceholder? {
+    guard device.platform == .ios, device.status == "notConnected" else {
+        return nil
+    }
+
+    return StagePlaceholder(title: "\(device.model) — not connected",
+                            detail: "Bring it near + unlock (same Apple ID), or it may be mirrored elsewhere. macOS mirrors one iPhone at a time.")
 }
 
 @Observable

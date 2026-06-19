@@ -25,7 +25,7 @@ final class IOSDiscoveryTests: XCTestCase {
                 },
                 "connectionProperties": {
                   "tunnelState": "connected",
-                  "transportType": "usb"
+                  "transportType": "wired"
                 }
               },
               {
@@ -42,7 +42,7 @@ final class IOSDiscoveryTests: XCTestCase {
                 },
                 "connectionProperties": {
                   "tunnelState": "disconnected",
-                  "transportType": "network"
+                  "transportType": "localNetwork"
                 }
               }
             ]
@@ -63,6 +63,104 @@ final class IOSDiscoveryTests: XCTestCase {
         XCTAssertEqual(devices[1].model, "iPhone 14")
         XCTAssertEqual(devices[1].osVersion, "17.6")
         XCTAssertEqual(devices[1].status, "connected")
+    }
+
+    func testParseDevicectlDeviceWithLocalNetworkTransportIsConnected() throws {
+        let data = Data("""
+        {
+          "result": {
+            "devices": [
+              {
+                "identifier": "C59850DA-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Benas iPhone",
+                  "osVersionNumber": "26.6"
+                },
+                "hardwareProperties": {
+                  "marketingName": "iPhone 13 Pro",
+                  "platform": "iOS",
+                  "udid": "00008110-0016592C1E12801E"
+                },
+                "connectionProperties": {
+                  "tunnelState": "connected",
+                  "transportType": "localNetwork"
+                }
+              }
+            ]
+          }
+        }
+        """.utf8)
+
+        let devices = parseDevicectlDevices(data)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices[0].model, "iPhone 13 Pro")
+        XCTAssertEqual(devices[0].status, "connected")
+    }
+
+    func testParseDevicectlDeviceWithNoneTransportIsNotConnected() throws {
+        let data = Data("""
+        {
+          "result": {
+            "devices": [
+              {
+                "identifier": "90F22BE8-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Spare iPhone",
+                  "osVersionNumber": "26.6"
+                },
+                "hardwareProperties": {
+                  "marketingName": "iPhone 16 Pro",
+                  "platform": "iOS",
+                  "udid": "00008120-00ABCDEF12345678"
+                },
+                "connectionProperties": {
+                  "tunnelState": "unavailable",
+                  "transportType": "None"
+                }
+              }
+            ]
+          }
+        }
+        """.utf8)
+
+        let devices = parseDevicectlDevices(data)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices[0].model, "iPhone 16 Pro")
+        XCTAssertEqual(devices[0].status, "notConnected")
+    }
+
+    func testParseDevicectlDeviceWithMissingTransportIsNotConnected() throws {
+        let data = Data("""
+        {
+          "result": {
+            "devices": [
+              {
+                "identifier": "90F22BE8-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Spare iPhone",
+                  "osVersionNumber": "26.6"
+                },
+                "hardwareProperties": {
+                  "marketingName": "iPhone 16 Pro",
+                  "platform": "iOS",
+                  "udid": "00008120-00ABCDEF12345678"
+                },
+                "connectionProperties": {
+                  "tunnelState": "unavailable"
+                }
+              }
+            ]
+          }
+        }
+        """.utf8)
+
+        let devices = parseDevicectlDevices(data)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices[0].model, "iPhone 16 Pro")
+        XCTAssertEqual(devices[0].status, "notConnected")
     }
 
     func testParseDevicectlDevicesEmptyArray() {
@@ -97,7 +195,7 @@ final class IOSDiscoveryTests: XCTestCase {
         XCTAssertEqual(devices[0].id, "00008110-001234563C91801E")
         XCTAssertEqual(devices[0].model, "Benas iPhone")
         XCTAssertEqual(devices[0].osVersion, "")
-        XCTAssertEqual(devices[0].status, "connected")
+        XCTAssertEqual(devices[0].status, "notConnected")
     }
 
     func testParseDevicectlDevicesExcludesNonIOSDevices() {
@@ -114,7 +212,8 @@ final class IOSDiscoveryTests: XCTestCase {
                   "platform": "macOS"
                 },
                 "connectionProperties": {
-                  "tunnelState": "connected"
+                  "tunnelState": "connected",
+                  "transportType": "localNetwork"
                 }
               }
             ]
