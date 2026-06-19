@@ -29,3 +29,9 @@ screenshots/
 *.session.json
 *.pem
 *.key
+
+# Swift / SwiftPM
+.build/
+*.app/
+.swiftpm/
+PhoneHub.app/
