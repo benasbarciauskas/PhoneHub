@@ -44,6 +44,10 @@ private struct DeviceRow: View {
     let selected: Bool
 
     var statusColor: Color {
+        if device.platform == .ios {
+            return device.status == "connected" ? Theme.ok : Theme.warn
+        }
+
         switch device.status {
         case "device": return Theme.ok
         case "unauthorized": return Theme.warn

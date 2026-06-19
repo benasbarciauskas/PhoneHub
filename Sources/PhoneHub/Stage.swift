@@ -8,7 +8,7 @@ struct Stage: View {
     var body: some View {
         ZStack {
             Theme.bg
-            if let device = store.focused, device.isReady {
+            if let device = store.focused, device.platform == .android, device.isReady {
                 VStack(spacing: Theme.s3) {
                     HStack {
                         Text(device.model).font(.headline).foregroundStyle(Theme.text)
@@ -24,6 +24,17 @@ struct Stage: View {
                 }
                 .padding(Theme.s6)
                 .transition(.opacity)
+            } else if let device = store.focused, device.platform == .ios {
+                VStack(alignment: .leading, spacing: Theme.s3) {
+                    Text(device.model)
+                        .font(.headline)
+                        .foregroundStyle(Theme.text)
+                    Text("Live control needs WebDriverAgent — set up in the next phase.")
+                        .foregroundStyle(Theme.subtext)
+                }
+                .padding(Theme.s6)
+                .frame(maxWidth: 420, alignment: .leading)
+                .cardSurface()
             } else {
                 Text(store.focused == nil ? "Select a device" : "Device not ready")
                     .foregroundStyle(Theme.subtext)
