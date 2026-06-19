@@ -1,0 +1,25 @@
+# Worktrees (always ignored — Ruflo standard)
+.worktrees/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets / local config
+.env
+*.local.json
+config.local.*
+
+# Device captures / logs
+screenshots/
+*.log
+
+# macOS
+.DS_Store
