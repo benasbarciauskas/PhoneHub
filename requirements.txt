@@ -1,9 +1,0 @@
-# PhoneHub — personal multi-device control + mirroring dashboard.
-#
-# GUI only. iOS/Android device access is done by shelling out to CLI tools
-# (libimobiledevice + adb/scrcpy) via subprocess, so we intentionally avoid
-# heavy native Python device-access dependencies here.
-customtkinter>=5.2.0
-
-# Testing
-pytest>=8.0.0

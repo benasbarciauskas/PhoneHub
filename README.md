@@ -27,48 +27,24 @@ official automation surfaces only.
 Python 3.11+ · Appium 2.x (XCUITest / UiAutomator2) · customtkinter ·
 `libimobiledevice` (iOS discovery) · `adb` + `scrcpy` (Android).
 
-## Setup
+## Build & run
 
-### 1. Install the device CLI tools (macOS, via Homebrew)
-
-```bash
-brew install libimobiledevice scrcpy android-platform-tools
-```
-
-- `libimobiledevice` provides `idevice_id`, `ideviceinfo`, and `idevicescreenshot` (iOS).
-- `android-platform-tools` provides `adb` (Android).
-- `scrcpy` mirrors an Android device's screen.
-
-PhoneHub degrades gracefully if any of these are missing — that platform simply
-shows no devices instead of crashing.
-
-> iOS notes: `idevicescreenshot` needs a mounted developer disk image. Apple's
-> native **iPhone Mirroring** app (used by Focus on iOS) supports only one
-> mirrored iPhone at a time.
-
-### 2. Install the Python dependencies
+Requires macOS 14+, Swift toolchain (Command Line Tools or Xcode), and
+`android-platform-tools` for Android control:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+brew install android-platform-tools   # provides adb
+./build-app.sh                         # builds PhoneHub.app
+open PhoneHub.app
 ```
 
-### 3. Run the dashboard
+Connect an Android phone with USB debugging enabled and authorize the Mac.
+The device appears in the sidebar; click it to see and control its live screen.
+
+iOS support (WebDriverAgent) is a later phase.
+
+## Tests
 
 ```bash
-python main.py
+swift test
 ```
-
-A window opens with a tile per connected device (model / OS / platform / short
-serial / status). **Refresh** re-runs discovery; each tile's **Focus** mirrors
-the device (iPhone Mirroring for iOS, `scrcpy` for Android) and **Screenshot**
-saves a PNG under `screenshots/`.
-
-### 4. Run the tests
-
-```bash
-pytest
-```
-
-The tests cover the device-discovery output parsing (`idevice_id` / `ideviceinfo`
-and `adb devices -l`) with mocked subprocess output — no real devices needed.
