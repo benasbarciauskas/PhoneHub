@@ -17,12 +17,14 @@ private struct DevicectlDevice: Decodable {
 
 private struct DevicectlDeviceProperties: Decodable {
     let name: String?
+    let osVersionNumber: String?
 }
 
 private struct DevicectlHardwareProperties: Decodable {
     let marketingName: String?
     let osVersionNumber: String?
     let platform: String?
+    let udid: String?
 }
 
 private struct DevicectlConnectionProperties: Decodable {
@@ -35,16 +37,21 @@ public func parseDevicectlDevices(_ data: Data) -> [Device] {
     }
 
     return (response.result?.devices ?? []).compactMap { entry in
-        guard let identifier = entry.identifier, !identifier.isEmpty else { return nil }
         guard entry.hardwareProperties?.platform == "iOS" else { return nil }
+
+        let chosenID = entry.hardwareProperties?.udid.flatMap { $0.isEmpty ? nil : $0 }
+            ?? entry.identifier.flatMap { $0.isEmpty ? nil : $0 }
+        guard let id = chosenID else { return nil }
 
         let model = entry.hardwareProperties?.marketingName
             ?? entry.deviceProperties?.name
-            ?? identifier
-        let osVersion = entry.hardwareProperties?.osVersionNumber ?? ""
+            ?? id
+        let osVersion = entry.deviceProperties?.osVersionNumber
+            ?? entry.hardwareProperties?.osVersionNumber
+            ?? ""
         let status = entry.connectionProperties?.tunnelState ?? "unknown"
 
-        return Device(id: identifier,
+        return Device(id: id,
                       platform: .ios,
                       model: model,
                       osVersion: osVersion,

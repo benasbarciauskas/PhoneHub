@@ -8,13 +8,20 @@ final class IOSDiscoveryTests: XCTestCase {
           "result": {
             "devices": [
               {
-                "identifier": "00008110-001234563C91801E",
-                "deviceProperties": { "name": "Benas iPhone" },
+                "identifier": "C59850DA-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Benas iPhone",
+                  "osVersionNumber": "26.6",
+                  "osBuildUpdate": "23G93",
+                  "developerModeStatus": "enabled"
+                },
                 "hardwareProperties": {
                   "marketingName": "iPhone 15 Pro",
                   "productType": "iPhone16,1",
-                  "osVersionNumber": "18.5",
-                  "platform": "iOS"
+                  "platform": "iOS",
+                  "udid": "00008110-0016592C1E12801E",
+                  "ecid": "123456789",
+                  "serialNumber": "ABC123DEF456"
                 },
                 "connectionProperties": {
                   "tunnelState": "connected",
@@ -22,13 +29,16 @@ final class IOSDiscoveryTests: XCTestCase {
                 }
               },
               {
-                "identifier": "00008120-00ABCDEF12345678",
-                "deviceProperties": { "name": "Spare iPhone" },
+                "identifier": "90F22BE8-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Spare iPhone",
+                  "osVersionNumber": "17.6"
+                },
                 "hardwareProperties": {
                   "marketingName": "iPhone 14",
                   "productType": "iPhone14,7",
-                  "osVersionNumber": "17.6",
-                  "platform": "iOS"
+                  "platform": "iOS",
+                  "udid": "00008120-00ABCDEF12345678"
                 },
                 "connectionProperties": {
                   "tunnelState": "disconnected",
@@ -43,10 +53,10 @@ final class IOSDiscoveryTests: XCTestCase {
         let devices = parseDevicectlDevices(data)
 
         XCTAssertEqual(devices.count, 2)
-        XCTAssertEqual(devices[0].id, "00008110-001234563C91801E")
+        XCTAssertEqual(devices[0].id, "00008110-0016592C1E12801E")
         XCTAssertEqual(devices[0].platform, .ios)
         XCTAssertEqual(devices[0].model, "iPhone 15 Pro")
-        XCTAssertEqual(devices[0].osVersion, "18.5")
+        XCTAssertEqual(devices[0].osVersion, "26.6")
         XCTAssertEqual(devices[0].status, "connected")
         XCTAssertEqual(devices[1].id, "00008120-00ABCDEF12345678")
         XCTAssertEqual(devices[1].platform, .ios)
@@ -113,5 +123,36 @@ final class IOSDiscoveryTests: XCTestCase {
         """.utf8)
 
         XCTAssertTrue(parseDevicectlDevices(data).isEmpty)
+    }
+
+    func testParseDevicectlDevicesFallsBackToIdentifierWhenUdidMissing() {
+        let data = Data("""
+        {
+          "result": {
+            "devices": [
+              {
+                "identifier": "C59850DA-1234-4567-89AB-ABCDEF123456",
+                "deviceProperties": {
+                  "name": "Fallback iPhone",
+                  "osVersionNumber": "26.6"
+                },
+                "hardwareProperties": {
+                  "marketingName": "iPhone 15 Pro",
+                  "platform": "iOS"
+                },
+                "connectionProperties": {
+                  "tunnelState": "connected"
+                }
+              }
+            ]
+          }
+        }
+        """.utf8)
+
+        let devices = parseDevicectlDevices(data)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices[0].id, "C59850DA-1234-4567-89AB-ABCDEF123456")
+        XCTAssertEqual(devices[0].osVersion, "26.6")
     }
 }
