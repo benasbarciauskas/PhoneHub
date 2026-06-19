@@ -67,10 +67,11 @@ func dockWindow(ownerName: String, into rect: CGRect) throws {
         throw WindowDockError.setFrameFailed
     }
 
-    let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    // AX requires position to be set before size; repeat to ensure both take effect.
     let positionResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-    _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
     _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
 
     guard sizeResult == .success, positionResult == .success else {
         throw WindowDockError.setFrameFailed

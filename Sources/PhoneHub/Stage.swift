@@ -53,6 +53,7 @@ struct Stage: View {
             return
         }
 
+        // iOS readiness is not tracked like Android so iOS devices always pass the dock check.
         guard device.isReady || device.platform == .ios else {
             placeholder = StagePlaceholder(title: "\(device.model) is not ready",
                                            detail: "Current status: \(device.status)")
@@ -187,10 +188,9 @@ private struct StageRectReader: NSViewRepresentable {
 
 private extension CGRect {
     func convertedToAXCoordinates() -> CGRect {
-        let screen = NSScreen.screens.first { $0.frame.intersects(self) } ?? NSScreen.main
-        guard let screen else { return self }
+        guard let primary = NSScreen.screens.first else { return self }
         return CGRect(x: minX,
-                      y: screen.frame.maxY - maxY,
+                      y: primary.frame.height - maxY,
                       width: width,
                       height: height)
     }

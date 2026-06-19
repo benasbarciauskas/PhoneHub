@@ -20,10 +20,6 @@ final class MirroringController {
         }
     }
 
-    func window() -> NSRunningApplication? {
-        findIPhoneMirroringApp()
-    }
-
     func dock(into rect: CGRect) throws {
         activate()
 
