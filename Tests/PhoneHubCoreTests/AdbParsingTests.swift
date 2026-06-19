@@ -35,10 +35,4 @@ final class AdbParsingTests: XCTestCase {
         XCTAssertEqual(rows[0].serial, "ZY223JR9XN")
     }
 
-    func testParseWmSize() {
-        XCTAssertEqual(parseWmSize("Physical size: 1080x2340"), CGSize(width: 1080, height: 2340))
-        XCTAssertEqual(parseWmSize("Physical size: 1440x3088\nOverride size: 1080x2340"),
-                       CGSize(width: 1080, height: 2340)) // override wins
-        XCTAssertNil(parseWmSize("garbage"))
-    }
 }

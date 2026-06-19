@@ -1,50 +1,45 @@
 # PhoneHub
 
-Personal multi-device control + mirroring dashboard. Discover, view, and drive
-**your own** connected iPhones and Android phones from one Mac app.
+Personal multi-device mirroring dashboard for your own connected iPhones and
+Android phones from one Mac app.
 
-## Scope
+## Architecture
 
-- **Device list**: discover connected devices (`idevice_id` for iOS, `adb devices`
-  for Android), show model / OS version / UDID-serial / status.
-- **Live monitoring**: periodic / on-demand screenshots, health indicators, logs.
-- **Mirroring focus**: click a device → bring its iPhone Mirroring window forward
-  (AppleScript) or launch `scrcpy` for Android.
-- **Manual ↔ scripted toggle**: pause/resume a per-device Appium session so you can
-  hand off between manual use and your own automation scripts.
-- **Scripting**: Appium-driven taps / scrolls / launch-app for your own testing and
-  personal automation.
+PhoneHub orchestrates native mirror windows. It does not capture pixels, embed
+streams, or forward synthetic clicks.
 
-## Out of scope
+- Android: launches `scrcpy -s <serial>` borderless and positions the window into
+  the PhoneHub stage with scrcpy window flags.
+- iOS: opens Apple's iPhone Mirroring app (`com.apple.ScreenContinuity`), finds
+  its window, and docks it into the stage using the macOS Accessibility API.
+- PhoneHub is the dashboard: discovery, focus selection, launch, and window
+  placement live in the app; touch input remains inside the native mirror apps.
 
-Not an account farm. No anti-detection / "humanization-for-evasion" engine, no
-proxy/SIM rotation, no multi-account-per-device orchestration aimed at evading
-platform integrity systems. Single user, single owner's devices and accounts,
-official automation surfaces only.
+## Requirements
 
-## Stack
+- macOS 14+ and Swift/Xcode tooling.
+- Android: `brew install android-platform-tools scrcpy`.
+- iOS docking: grant PhoneHub Accessibility in System Settings -> Privacy &
+  Security -> Accessibility.
+- Stable signing: `build-app.sh` creates and uses a persistent self-signed
+  identity named `PhoneHub Self-Signed` in `phonehub-signing.keychain-db` so the
+  Accessibility grant survives rebuilds.
 
-Python 3.11+ · Appium 2.x (XCUITest / UiAutomator2) · customtkinter ·
-`libimobiledevice` (iOS discovery) · `adb` + `scrcpy` (Android).
-
-## Build & run
-
-Requires macOS 14+, Swift toolchain (Command Line Tools or Xcode), and
-`android-platform-tools` for Android control:
+## Build & Run
 
 ```bash
-brew install android-platform-tools   # provides adb
-./build-app.sh                         # builds PhoneHub.app
+./build-app.sh
 open PhoneHub.app
 ```
 
-Connect an Android phone with USB debugging enabled and authorize the Mac.
-The device appears in the sidebar; click it to see and control its live screen.
-
-iOS support (WebDriverAgent) is a later phase.
+Connect Android devices with USB debugging enabled and authorized. Connect iOS
+devices supported by Apple's iPhone Mirroring. Select a device in the sidebar to
+launch and dock its native mirror window into the stage.
 
 ## Tests
 
 ```bash
-swift test
+CLANG_MODULE_CACHE_PATH=$PWD/.build/cache/clang \
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+swift test --disable-sandbox
 ```

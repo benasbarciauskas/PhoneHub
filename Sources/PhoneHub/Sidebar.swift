@@ -23,8 +23,8 @@ struct Sidebar: View {
             ScrollView {
                 VStack(spacing: Theme.s1) {
                     ForEach(store.devices) { device in
-                        DeviceRow(device: device, selected: device.id == store.focusedID)
-                            .onTapGesture { withAnimation(Theme.selection) { store.focus(device.id) } }
+                        DeviceRow(device: device, selected: device.id == store.focusedDevice?.id)
+                            .onTapGesture { withAnimation(Theme.selection) { store.setFocused(device) } }
                     }
                     if store.devices.isEmpty && !store.toolMissing {
                         Text("No devices connected").font(.caption)

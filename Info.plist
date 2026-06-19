@@ -11,5 +11,7 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>PhoneHub opens iPhone Mirroring so it can dock the mirror window into the dashboard.</string>
 </dict>
 </plist>

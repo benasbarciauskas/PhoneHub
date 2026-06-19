@@ -14,14 +14,6 @@ public func adbArgs(serial: String, _ rest: String...) -> [String] {
     ["-s", serial] + rest
 }
 
-public func adbTapArgs(serial: String, x: Int, y: Int) -> [String] {
-    ["-s", serial, "shell", "input", "tap", String(x), String(y)]
-}
-
-public func adbScreencapArgs(serial: String) -> [String] {
-    ["-s", serial, "exec-out", "screencap", "-p"]
-}
-
 public struct CommandResult {
     public let exitCode: Int32
     public let stdout: Data
