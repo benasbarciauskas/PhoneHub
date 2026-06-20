@@ -64,6 +64,47 @@ final class StageGeometryTests: XCTestCase {
         XCTAssertEqual(rect.minY, -98, accuracy: 0.0001)
     }
 
+    func testRectsEffectivelyEqualReturnsTrueForEqualRects() {
+        let rect = CGRect(x: 10, y: 20, width: 300, height: 400)
+
+        XCTAssertTrue(rectsEffectivelyEqual(rect, rect, tolerance: 1))
+    }
+
+    func testRectsEffectivelyEqualReturnsFalseForXChangeGreaterThanTolerance() {
+        let lhs = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let rhs = CGRect(x: 11.1, y: 20, width: 300, height: 400)
+
+        XCTAssertFalse(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
+    }
+
+    func testRectsEffectivelyEqualReturnsFalseForYChangeGreaterThanTolerance() {
+        let lhs = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let rhs = CGRect(x: 10, y: 21.1, width: 300, height: 400)
+
+        XCTAssertFalse(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
+    }
+
+    func testRectsEffectivelyEqualReturnsFalseForWidthChangeGreaterThanTolerance() {
+        let lhs = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let rhs = CGRect(x: 10, y: 20, width: 301.1, height: 400)
+
+        XCTAssertFalse(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
+    }
+
+    func testRectsEffectivelyEqualReturnsFalseForHeightChangeGreaterThanTolerance() {
+        let lhs = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let rhs = CGRect(x: 10, y: 20, width: 300, height: 401.1)
+
+        XCTAssertFalse(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
+    }
+
+    func testRectsEffectivelyEqualReturnsTrueForSubPointJitterInAnyDimension() {
+        let lhs = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let rhs = CGRect(x: 10.9, y: 20.9, width: 300.9, height: 400.9)
+
+        XCTAssertTrue(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
+    }
+
     func testGridTileRectsForRequestedCounts() {
         [1, 2, 4, 5, 9].forEach { count in
             assertGridTileRects(count: count)

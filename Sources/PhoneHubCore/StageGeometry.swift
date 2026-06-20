@@ -29,6 +29,13 @@ public func centeredRect(forContentSize contentSize: CGSize, within container: C
                   height: height)
 }
 
+public func rectsEffectivelyEqual(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat) -> Bool {
+    abs(lhs.minX - rhs.minX) <= tolerance &&
+        abs(lhs.minY - rhs.minY) <= tolerance &&
+        abs(lhs.width - rhs.width) <= tolerance &&
+        abs(lhs.height - rhs.height) <= tolerance
+}
+
 public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, spacing: CGFloat) -> [CGRect] {
     guard count > 0, container.width > 0, container.height > 0 else { return [] }
 
