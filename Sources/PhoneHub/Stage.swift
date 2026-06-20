@@ -14,6 +14,7 @@ struct Stage: View {
     @State private var dockingTaskID: UUID?
     @State private var dockingTaskIsWall = false
     @State private var redockTask: Task<Void, Never>?
+    @State private var isSyncingDock = false
 
     private let wallInset: CGFloat = 16
     private let wallSpacing: CGFloat = 12
@@ -58,6 +59,7 @@ struct Stage: View {
             syncLayout()
         }
         .onChange(of: store.layout) { _, _ in
+            stageState.menuFittedIOSDeviceIDs.removeAll()
             syncLayout()
         }
         .onChange(of: store.devices) { _, _ in
@@ -194,7 +196,15 @@ struct Stage: View {
                 }
             }
             do {
-                try await mirroringController.dock(into: stageState.stageRect)
+                if stageState.menuFittedIOSDeviceIDs.contains(device.id) {
+                    try dockWindow(ownerName: "com.apple.ScreenContinuity",
+                                   into: stageState.stageRect,
+                                   activate: false)
+                } else {
+                    // This initial dock may open the View menu once to fit iPhone Mirroring.
+                    try await mirroringController.dock(into: stageState.stageRect)
+                    stageState.menuFittedIOSDeviceIDs.insert(device.id)
+                }
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = true
                 stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
@@ -214,7 +224,9 @@ struct Stage: View {
         redockTask?.cancel()
         redockTask = Task {
             try? await Task.sleep(nanoseconds: 180_000_000)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !isSyncingDock else { return }
+            isSyncingDock = true
+            defer { isSyncingDock = false }
             switch store.layout {
             case .focus:
                 await resyncDockedWindow()
@@ -236,9 +248,9 @@ struct Stage: View {
         do {
             switch device.platform {
             case .ios:
-                try await fitIPhoneMirroring(into: stageState.stageRect)
-                stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
-                                                          detail: "iPhone Mirroring is positioned in the stage rectangle.")
+                try dockWindow(ownerName: "com.apple.ScreenContinuity",
+                               into: stageState.stageRect,
+                               activate: false)
             case .android:
                 // Android is launched with an initial scrcpy frame; WindowDock currently targets apps,
                 // not a scrcpy window title, so live AX re-positioning is left unchanged.
@@ -258,6 +270,7 @@ struct Stage: View {
             scrcpyController.stop(serial: device.id)
         case .ios:
             mirroringController.stop()
+            stageState.menuFittedIOSDeviceIDs.remove(device.id)
         }
     }
 
@@ -288,11 +301,17 @@ struct Stage: View {
             if stageState.wallIOSDeviceID != nil || (dockingTaskIsWall && dockingTaskDeviceID != nil) {
                 cancelDockingTask()
                 mirroringController.stop()
+                if let wallIOSDeviceID = stageState.wallIOSDeviceID {
+                    stageState.menuFittedIOSDeviceIDs.remove(wallIOSDeviceID)
+                }
                 stageState.wallIOSDeviceID = nil
             }
         } else if stageState.wallIOSDeviceID != nil, stageState.wallIOSDeviceID != liveIOSID {
             cancelDockingTask()
             mirroringController.stop()
+            if let wallIOSDeviceID = stageState.wallIOSDeviceID {
+                stageState.menuFittedIOSDeviceIDs.remove(wallIOSDeviceID)
+            }
             stageState.wallIOSDeviceID = nil
         } else if dockingTaskDeviceID != nil,
                   (!dockingTaskIsWall || dockingTaskDeviceID != liveIOSID) {
@@ -407,9 +426,16 @@ struct Stage: View {
                 }
             }
             do {
-                try await mirroringController.dock(into: rect)
+                if stageState.menuFittedIOSDeviceIDs.contains(device.id) {
+                    try dockWindow(ownerName: "com.apple.ScreenContinuity",
+                                   into: rect,
+                                   activate: false)
+                } else {
+                    // This initial wall dock may open the View menu once to fit iPhone Mirroring.
+                    try await mirroringController.dock(into: rect)
+                    stageState.menuFittedIOSDeviceIDs.insert(device.id)
+                }
                 guard !Task.isCancelled, store.layout == .wall else { return }
-                try await fitIPhoneMirroring(into: rect)
                 stageState.wallIOSDeviceID = device.id
                 stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
                                                                           detail: nil)
@@ -443,7 +469,9 @@ struct Stage: View {
                 }
             }
             do {
-                try await fitIPhoneMirroring(into: rect)
+                try dockWindow(ownerName: "com.apple.ScreenContinuity",
+                               into: rect,
+                               activate: false)
                 guard !Task.isCancelled, store.layout == .wall else { return }
                 stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
                                                                           detail: nil)
@@ -462,6 +490,7 @@ struct Stage: View {
     }
 
     private func fitIPhoneMirroring(into rect: CGRect) async throws {
+        // Opening the View menu is only allowed during a one-shot initial fit, never from layout resync.
         guard let pid = findIPhoneMirroringApp()?.processIdentifier else {
             throw WindowDockError.appNotFound("com.apple.ScreenContinuity")
         }
@@ -478,6 +507,7 @@ struct Stage: View {
         stageState.wallAndroidSerials.removeAll()
         stageState.wallIOSDeviceID = nil
         stageState.wallPlaceholders.removeAll()
+        stageState.menuFittedIOSDeviceIDs.removeAll()
     }
 
     private func cancelDockingTask() {
@@ -549,6 +579,7 @@ private final class StageState {
     var isDocked = false
     var wallAndroidSerials: Set<String> = []
     var wallIOSDeviceID: String?
+    var menuFittedIOSDeviceIDs: Set<String> = []
     var wallPlaceholders: [String: StagePlaceholder] = [:]
     var placeholder = StagePlaceholder(title: "Select a device",
                                        detail: "Connected devices appear in the sidebar.")
@@ -649,6 +680,7 @@ private struct StageRectReader: NSViewRepresentable {
         var onWindowFrameChange: () -> Void
         private weak var observedWindow: NSWindow?
         private var observerTokens: [NSObjectProtocol] = []
+        private var lastReportedRect: CGRect?
 
         init(onChange: @escaping (CGRect) -> Void,
              onWindowFrameChange: @escaping () -> Void) {
@@ -681,6 +713,10 @@ private struct StageRectReader: NSViewRepresentable {
             let rectInWindow = convert(bounds, to: nil)
             let screenRect = window.convertToScreen(rectInWindow)
             let axRect = screenRect.convertedToAXCoordinates()
+            guard lastReportedRect.map({ !$0.isEffectivelyEqual(to: axRect, tolerance: 1) }) ?? true else {
+                return
+            }
+            lastReportedRect = axRect
             DispatchQueue.main.async {
                 self.onChange(axRect)
             }
@@ -722,5 +758,12 @@ private extension CGRect {
                       y: primary.frame.height - maxY,
                       width: width,
                       height: height)
+    }
+
+    func isEffectivelyEqual(to other: CGRect, tolerance: CGFloat) -> Bool {
+        abs(minX - other.minX) <= tolerance &&
+            abs(minY - other.minY) <= tolerance &&
+            abs(width - other.width) <= tolerance &&
+            abs(height - other.height) <= tolerance
     }
 }
