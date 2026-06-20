@@ -3,6 +3,36 @@ import XCTest
 @testable import PhoneHubCore
 
 final class StageGeometryTests: XCTestCase {
+    func testFitStepShrinksWhenCurrentWidthIsLargerThanTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 401, height: 600),
+                               target: CGSize(width: 400, height: 700)),
+                       .smaller)
+    }
+
+    func testFitStepShrinksWhenCurrentHeightIsLargerThanTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 300, height: 701),
+                               target: CGSize(width: 400, height: 700)),
+                       .smaller)
+    }
+
+    func testFitStepGrowsWhenCurrentIsMuchSmallerInBothDimensions() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 300, height: 600),
+                               target: CGSize(width: 400, height: 700)),
+                       .larger)
+    }
+
+    func testFitStepFitsWhenCurrentIsWithinMarginInBothDimensions() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 365, height: 665),
+                               target: CGSize(width: 400, height: 700)),
+                       .fits)
+    }
+
+    func testFitStepFitsWhenCurrentEqualsTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 400, height: 700),
+                               target: CGSize(width: 400, height: 700)),
+                       .fits)
+    }
+
     func testCenteredRectCentersSmallerMirrorInStage() {
         let container = CGRect(x: 10, y: 20, width: 400, height: 800)
         let rect = centeredRect(forContentSize: CGSize(width: 316, height: 696), within: container, inset: 12)

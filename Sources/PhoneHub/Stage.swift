@@ -32,6 +32,17 @@ struct Stage: View {
             } else {
                 PlaceholderView(placeholder: stageState.placeholder)
             }
+
+            if shouldShowMirroringRail {
+                MirroringNavigationRail { itemName in
+                    Task { @MainActor in
+                        guard let pid = findIPhoneMirroringApp()?.processIdentifier else { return }
+                        _ = pressViewMenuItem(pid: pid, named: itemName)
+                    }
+                }
+                .padding(.bottom, Theme.s4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
         }
         .background(StageRectReader { rect in
             stageState.stageRect = rect
@@ -78,6 +89,18 @@ struct Stage: View {
                 return device.status == "connected"
             }
         }.prefix(9))
+    }
+
+    private var shouldShowMirroringRail: Bool {
+        guard store.layout == .focus,
+              stageState.isDocked,
+              let device = stageState.activeDevice,
+              device.id == store.focusedDevice?.id,
+              device.platform == .ios,
+              device.status == "connected" else {
+            return false
+        }
+        return true
     }
 
     private func syncLayout() {
@@ -177,12 +200,8 @@ struct Stage: View {
             }
             do {
                 try await mirroringController.dock(into: stageState.stageRect)
-                let mirrorSize = try dockWindow(ownerName: "com.apple.ScreenContinuity", into: stageState.stageRect)
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = true
-                if growStageWindowIfNeeded(forMirrorSize: mirrorSize) {
-                    scheduleDockSync()
-                }
                 stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
                                                           detail: "iPhone Mirroring is positioned in the stage rectangle.")
             } catch is CancellationError {
@@ -203,14 +222,14 @@ struct Stage: View {
             guard !Task.isCancelled else { return }
             switch store.layout {
             case .focus:
-                resyncDockedWindow()
+                await resyncDockedWindow()
             case .wall:
                 syncWall()
             }
         }
     }
 
-    private func resyncDockedWindow() {
+    private func resyncDockedWindow() async {
         guard stageState.isDocked,
               let device = stageState.activeDevice,
               stageState.activeDevice?.id == store.focusedDevice?.id,
@@ -222,10 +241,7 @@ struct Stage: View {
         do {
             switch device.platform {
             case .ios:
-                let mirrorSize = try dockWindow(ownerName: "com.apple.ScreenContinuity", into: stageState.stageRect, activate: false)
-                if growStageWindowIfNeeded(forMirrorSize: mirrorSize) {
-                    scheduleDockSync()
-                }
+                try await fitIPhoneMirroring(into: stageState.stageRect)
                 stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
                                                           detail: "iPhone Mirroring is positioned in the stage rectangle.")
             case .android:
@@ -375,18 +391,7 @@ struct Stage: View {
         }
 
         if stageState.wallIOSDeviceID == device.id {
-            do {
-                try dockWindow(ownerName: "com.apple.ScreenContinuity", into: rect, activate: false)
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
-                                                                          detail: nil)
-            } catch {
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                    title: device.model,
-                    detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                )
-                stageState.wallIOSDeviceID = nil
-                scheduleDockSync()
-            }
+            dockWallIOS(device, rect: rect)
             return
         }
 
@@ -409,7 +414,7 @@ struct Stage: View {
             do {
                 try await mirroringController.dock(into: rect)
                 guard !Task.isCancelled, store.layout == .wall else { return }
-                try dockWindow(ownerName: "com.apple.ScreenContinuity", into: rect, activate: false)
+                try await fitIPhoneMirroring(into: rect)
                 stageState.wallIOSDeviceID = device.id
                 stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
                                                                           detail: nil)
@@ -423,6 +428,49 @@ struct Stage: View {
                 )
             }
         }
+    }
+
+    private func dockWallIOS(_ device: Device, rect: CGRect) {
+        cancelDockingTask()
+        stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                  detail: nil)
+        let taskID = UUID()
+        dockingTaskDeviceID = device.id
+        dockingTaskID = taskID
+        dockingTaskIsWall = true
+        dockingTask = Task {
+            defer {
+                if dockingTaskID == taskID {
+                    dockingTask = nil
+                    dockingTaskDeviceID = nil
+                    dockingTaskID = nil
+                    dockingTaskIsWall = false
+                }
+            }
+            do {
+                try await fitIPhoneMirroring(into: rect)
+                guard !Task.isCancelled, store.layout == .wall else { return }
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                                                                          detail: nil)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, store.layout == .wall else { return }
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(
+                    title: device.model,
+                    detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                )
+                stageState.wallIOSDeviceID = nil
+                scheduleDockSync()
+            }
+        }
+    }
+
+    private func fitIPhoneMirroring(into rect: CGRect) async throws {
+        guard let pid = findIPhoneMirroringApp()?.processIdentifier else {
+            throw WindowDockError.appNotFound("com.apple.ScreenContinuity")
+        }
+        try await fitMirrorToRect(pid: pid, rect: rect)
     }
 
     private func stopWall() {
@@ -500,6 +548,37 @@ struct Stage: View {
 struct StagePlaceholder: Equatable {
     let title: String
     let detail: String?
+}
+
+private struct MirroringNavigationRail: View {
+    let press: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.s1) {
+            railButton(title: "Home", itemName: "Home Screen")
+            railButton(title: "App Switcher", itemName: "App Switcher")
+            railButton(title: "Spotlight", itemName: "Spotlight")
+        }
+        .padding(Theme.s1)
+        .background(Theme.surface.opacity(0.78))
+        .clipShape(Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous)
+            .strokeBorder(Theme.border.opacity(0.9), lineWidth: 1))
+        .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+    }
+
+    private func railButton(title: String, itemName: String) -> some View {
+        Button(title) {
+            press(itemName)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(Theme.text)
+        .padding(.horizontal, Theme.s2)
+        .frame(height: 26)
+        .background(Theme.elevated.opacity(0.88))
+        .clipShape(Capsule(style: .continuous))
+    }
 }
 
 func stageNotConnectedIOSPlaceholder(for device: Device) -> StagePlaceholder? {
