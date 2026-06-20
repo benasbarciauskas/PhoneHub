@@ -155,25 +155,28 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
     }
 
+    let targetSize = rect.size
+    let maxIterations = 14
+    var iterationCount = 0
     var seenSizes: Set<String> = [roundedSizeKey(currentSize)]
 
-    for _ in 0..<12 {
-        let actionName: String
-        switch fitStep(current: currentSize, target: rect.size) {
-        case .fits:
-            return try centerAXWindow(window, size: currentSize, in: rect)
-        case .smaller:
-            actionName = "Smaller"
-        case .larger:
-            actionName = "Larger"
-        }
-
+    func pressAndRead(_ actionName: String) async throws -> CGSize? {
         guard pressViewMenuItem(pid: pid, named: actionName) else {
-            break
+            return nil
         }
 
         try await Task.sleep(nanoseconds: 120_000_000)
-        guard let nextSize = readAXSize(window) else {
+        return readAXSize(window)
+    }
+
+    func recordSeenSize(_ size: CGSize) -> Bool {
+        seenSizes.insert(roundedSizeKey(size)).inserted
+    }
+
+    while exceedsTarget(currentSize, target: targetSize), iterationCount < maxIterations {
+        iterationCount += 1
+
+        guard let nextSize = try await pressAndRead("Smaller") else {
             break
         }
 
@@ -182,24 +185,55 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
             break
         }
 
-        let nextSizeKey = roundedSizeKey(nextSize)
-        if seenSizes.contains(nextSizeKey) {
+        currentSize = nextSize
+        guard recordSeenSize(currentSize) else {
+            if exceedsTarget(currentSize, target: targetSize),
+               let smallerSize = try await pressAndRead("Smaller") {
+                currentSize = smallerSize
+            }
+            break
+        }
+    }
+
+    while !exceedsTarget(currentSize, target: targetSize), iterationCount < maxIterations {
+        if fitStep(current: currentSize, target: targetSize) == .smaller {
+            break
+        }
+
+        iterationCount += 1
+        let lastFittingSize = currentSize
+        guard let nextSize = try await pressAndRead("Larger") else {
+            break
+        }
+
+        if sizesAreEffectivelyEqual(currentSize, nextSize) {
             currentSize = nextSize
-            if currentSize.width > rect.size.width || currentSize.height > rect.size.height,
-               pressViewMenuItem(pid: pid, named: "Smaller") {
-                try await Task.sleep(nanoseconds: 120_000_000)
-                if let smallerSize = readAXSize(window) {
-                    currentSize = smallerSize
-                }
+            break
+        }
+
+        currentSize = nextSize
+        let wasNewSize = recordSeenSize(currentSize)
+
+        if exceedsTarget(currentSize, target: targetSize) {
+            if let smallerSize = try await pressAndRead("Smaller"),
+               !exceedsTarget(smallerSize, target: targetSize) {
+                currentSize = smallerSize
+            } else {
+                currentSize = lastFittingSize
             }
             break
         }
 
-        seenSizes.insert(nextSizeKey)
-        currentSize = nextSize
+        guard wasNewSize else {
+            break
+        }
     }
 
     return try centerAXWindow(window, size: currentSize, in: rect)
+}
+
+private func exceedsTarget(_ size: CGSize, target: CGSize) -> Bool {
+    size.width > target.width || size.height > target.height
 }
 
 private func roundedSizeKey(_ size: CGSize) -> String {

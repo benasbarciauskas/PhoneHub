@@ -4,21 +4,16 @@ import Foundation
 public enum FitStep: Equatable, Sendable {
     case smaller
     case larger
+    // Retained for compatibility; fitStep now probes larger for every fitting size.
     case fits
 }
 
 public func fitStep(current: CGSize, target: CGSize) -> FitStep {
-    let stepMargin: CGFloat = 40
-
     if current.width > target.width || current.height > target.height {
         return .smaller
     }
 
-    if current.width < target.width - stepMargin && current.height < target.height - stepMargin {
-        return .larger
-    }
-
-    return .fits
+    return .larger
 }
 
 public func centeredRect(forContentSize contentSize: CGSize, within container: CGRect, inset: CGFloat) -> CGRect {

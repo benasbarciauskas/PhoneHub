@@ -15,22 +15,31 @@ final class StageGeometryTests: XCTestCase {
                        .smaller)
     }
 
-    func testFitStepGrowsWhenCurrentIsMuchSmallerInBothDimensions() {
+    func testFitStepGrowsWhenCurrentFitsTarget() {
         XCTAssertEqual(fitStep(current: CGSize(width: 300, height: 600),
                                target: CGSize(width: 400, height: 700)),
                        .larger)
     }
 
-    func testFitStepFitsWhenCurrentIsWithinMarginInBothDimensions() {
+    func testFitStepProbesLargerWhenCurrentIsNearTarget() {
         XCTAssertEqual(fitStep(current: CGSize(width: 365, height: 665),
                                target: CGSize(width: 400, height: 700)),
-                       .fits)
+                       .larger)
     }
 
-    func testFitStepFitsWhenCurrentEqualsTarget() {
+    func testFitStepProbesLargerWhenCurrentEqualsTarget() {
         XCTAssertEqual(fitStep(current: CGSize(width: 400, height: 700),
                                target: CGSize(width: 400, height: 700)),
-                       .fits)
+                       .larger)
+    }
+
+    func testFitStepLeavesOvershootRevertToWindowLoop() {
+        let fittingSize = CGSize(width: 316, height: 696)
+        let overshootSize = CGSize(width: 406, height: 890)
+        let target = CGSize(width: 500, height: 752)
+
+        XCTAssertEqual(fitStep(current: fittingSize, target: target), .larger)
+        XCTAssertEqual(fitStep(current: overshootSize, target: target), .smaller)
     }
 
     func testCenteredRectCentersSmallerMirrorInStage() {
