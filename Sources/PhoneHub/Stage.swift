@@ -248,6 +248,7 @@ struct Stage: View {
         do {
             switch device.platform {
             case .ios:
+                // Reposition ONLY — never call the menu-fit (fitMirrorToRect) here; doing so on every layout-driven resync caused a runaway loop that opened iPhone Mirroring's View menu continuously and locked up the Mac. Menu-fit runs once per dock, guarded by menuFittedIOSDeviceIDs.
                 try dockWindow(ownerName: "com.apple.ScreenContinuity",
                                into: stageState.stageRect,
                                activate: false)
@@ -469,6 +470,7 @@ struct Stage: View {
                 }
             }
             do {
+                // Reposition ONLY — never call the menu-fit (fitMirrorToRect) here; doing so on every layout-driven resync caused a runaway loop that opened iPhone Mirroring's View menu continuously and locked up the Mac. Menu-fit runs once per dock, guarded by menuFittedIOSDeviceIDs.
                 try dockWindow(ownerName: "com.apple.ScreenContinuity",
                                into: rect,
                                activate: false)
@@ -487,14 +489,6 @@ struct Stage: View {
                 scheduleDockSync()
             }
         }
-    }
-
-    private func fitIPhoneMirroring(into rect: CGRect) async throws {
-        // Opening the View menu is only allowed during a one-shot initial fit, never from layout resync.
-        guard let pid = findIPhoneMirroringApp()?.processIdentifier else {
-            throw WindowDockError.appNotFound("com.apple.ScreenContinuity")
-        }
-        try await fitMirrorToRect(pid: pid, rect: rect)
     }
 
     private func stopWall() {
@@ -713,7 +707,7 @@ private struct StageRectReader: NSViewRepresentable {
             let rectInWindow = convert(bounds, to: nil)
             let screenRect = window.convertToScreen(rectInWindow)
             let axRect = screenRect.convertedToAXCoordinates()
-            guard lastReportedRect.map({ !$0.isEffectivelyEqual(to: axRect, tolerance: 1) }) ?? true else {
+            guard lastReportedRect.map({ !rectsEffectivelyEqual($0, axRect, tolerance: 1) }) ?? true else {
                 return
             }
             lastReportedRect = axRect
@@ -760,10 +754,4 @@ private extension CGRect {
                       height: height)
     }
 
-    func isEffectivelyEqual(to other: CGRect, tolerance: CGFloat) -> Bool {
-        abs(minX - other.minX) <= tolerance &&
-            abs(minY - other.minY) <= tolerance &&
-            abs(width - other.width) <= tolerance &&
-            abs(height - other.height) <= tolerance
-    }
 }
