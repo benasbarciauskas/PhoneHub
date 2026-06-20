@@ -19,3 +19,34 @@ public func requiredStageSize(forMirrorSize mirrorSize: CGSize, inset: CGFloat) 
     return CGSize(width: max(0, mirrorSize.width) + 2 * clampedInset,
                   height: max(0, mirrorSize.height) + 2 * clampedInset)
 }
+
+public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, spacing: CGFloat) -> [CGRect] {
+    guard count > 0, container.width > 0, container.height > 0 else { return [] }
+
+    let clampedInset = max(0, inset)
+    let clampedSpacing = max(0, spacing)
+    let tileCount = max(1, count)
+    let columns = Int(ceil(sqrt(Double(tileCount))))
+    let rows = Int(ceil(Double(tileCount) / Double(columns)))
+    let insetX = min(clampedInset, max(0, container.width / 2))
+    let insetY = min(clampedInset, max(0, container.height / 2))
+    let available = container.insetBy(dx: insetX, dy: insetY)
+
+    let totalSpacingX = clampedSpacing * CGFloat(max(0, columns - 1))
+    let totalSpacingY = clampedSpacing * CGFloat(max(0, rows - 1))
+    let tileWidth = max(0, (available.width - totalSpacingX) / CGFloat(columns))
+    let tileHeight = max(0, (available.height - totalSpacingY) / CGFloat(rows))
+    let gridWidth = CGFloat(columns) * tileWidth + totalSpacingX
+    let gridHeight = CGFloat(rows) * tileHeight + totalSpacingY
+    let originX = available.midX - gridWidth / 2
+    let originY = available.midY - gridHeight / 2
+
+    return (0..<tileCount).map { index in
+        let row = index / columns
+        let column = index % columns
+        return CGRect(x: originX + CGFloat(column) * (tileWidth + clampedSpacing),
+                      y: originY + CGFloat(row) * (tileHeight + clampedSpacing),
+                      width: tileWidth,
+                      height: tileHeight)
+    }
+}

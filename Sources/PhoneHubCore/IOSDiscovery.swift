@@ -29,6 +29,7 @@ private struct DevicectlHardwareProperties: Decodable {
 
 private struct DevicectlConnectionProperties: Decodable {
     let tunnelState: String?
+    let transportType: String?
 }
 
 public func parseDevicectlDevices(_ data: Data) -> [Device] {
@@ -49,8 +50,8 @@ public func parseDevicectlDevices(_ data: Data) -> [Device] {
         let osVersion = entry.deviceProperties?.osVersionNumber
             ?? entry.hardwareProperties?.osVersionNumber
             ?? ""
-        let status = entry.connectionProperties?.tunnelState ?? "unknown"
-
+        let transportType = entry.connectionProperties?.transportType
+        let status = transportType != nil && transportType != "None" ? "connected" : "notConnected"
         return Device(id: id,
                       platform: .ios,
                       model: model,

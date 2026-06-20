@@ -14,5 +14,9 @@ let package = Package(
             name: "PhoneHubCoreTests",
             dependencies: ["PhoneHubCore"]
         ),
+        .testTarget(
+            name: "PhoneHubTests",
+            dependencies: ["PhoneHub"]
+        ),
     ]
 )

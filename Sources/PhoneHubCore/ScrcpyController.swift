@@ -58,7 +58,7 @@ public final class ScrcpyController {
                                   y: Int(frame.origin.y.rounded()),
                                   width: Int(frame.width.rounded()),
                                   height: Int(frame.height.rounded()),
-                                  title: "PhoneHub \(serial)")
+                                  title: "PhoneHub-\(serial)")
         } catch {
             lastState = .invalidSerial
             return nil
@@ -87,5 +87,14 @@ public final class ScrcpyController {
             process.terminate()
         }
         lastState = .stopped
+    }
+
+    public func processIdentifier(for serial: String) -> pid_t? {
+        processes[serial]?.processIdentifier
+    }
+
+    public func stopAll() {
+        let serials = Array(processes.keys)
+        serials.forEach { stop(serial: $0) }
     }
 }

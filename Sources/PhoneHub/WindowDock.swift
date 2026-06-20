@@ -47,12 +47,14 @@ func findIPhoneMirroringApp() -> NSRunningApplication? {
 
 @MainActor
 @discardableResult
-func dockWindow(ownerName: String, into rect: CGRect) throws -> CGSize {
+func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) throws -> CGSize {
     guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
 
     let app = findRunningApplication(ownerName: ownerName)
     guard let app else { throw WindowDockError.appNotFound(ownerName) }
-    app.activate()
+    if activate {
+        app.activate()
+    }
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(appElement, 0.4)
@@ -81,6 +83,29 @@ func dockWindow(ownerName: String, into rect: CGRect) throws -> CGSize {
     return mirrorSize
 }
 
+@MainActor
+@discardableResult
+func dockWindow(byTitle title: String, processIdentifier: pid_t, into rect: CGRect) throws -> CGSize {
+    guard isAccessibilityTrusted() else { throw WindowDockError.accessibilityNotTrusted }
+
+    guard let window = findWindow(title: title, processIdentifier: processIdentifier) else {
+        throw WindowDockError.windowNotFound(title)
+    }
+
+    AXUIElementSetMessagingTimeout(window, 0.4)
+    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+    AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, false as CFTypeRef)
+    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+
+    let size = CGSize(width: max(0, rect.width), height: max(0, rect.height))
+    guard setAXSize(window, to: size),
+          setAXPosition(window, to: rect.origin) else {
+        throw WindowDockError.setFrameFailed
+    }
+
+    return size
+}
+
 private func readAXSize(_ window: AXUIElement) -> CGSize? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &value) == .success,
@@ -99,6 +124,23 @@ private func readAXSize(_ window: AXUIElement) -> CGSize? {
     return size
 }
 
+private func readAXTitle(_ window: AXUIElement) -> String? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else {
+        return nil
+    }
+    return value as? String
+}
+
+private func setAXSize(_ window: AXUIElement, to size: CGSize) -> Bool {
+    var size = size
+    guard let sizeValue = AXValueCreate(.cgSize, &size) else {
+        return false
+    }
+
+    return AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue) == .success
+}
+
 private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
     var position = point
     guard let positionValue = AXValueCreate(.cgPoint, &position) else {
@@ -106,6 +148,22 @@ private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
     }
 
     return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) == .success
+}
+
+@MainActor
+private func findWindow(title: String, processIdentifier: pid_t) -> AXUIElement? {
+    let appElement = AXUIElementCreateApplication(processIdentifier)
+    AXUIElementSetMessagingTimeout(appElement, 0.2)
+
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else {
+        return nil
+    }
+
+    return windows.first { window in
+        readAXTitle(window) == title
+    }
 }
 
 @MainActor
