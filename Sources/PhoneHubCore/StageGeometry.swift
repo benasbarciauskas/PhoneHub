@@ -34,12 +34,6 @@ public func centeredRect(forContentSize contentSize: CGSize, within container: C
                   height: height)
 }
 
-public func requiredStageSize(forMirrorSize mirrorSize: CGSize, inset: CGFloat) -> CGSize {
-    let clampedInset = max(0, inset)
-    return CGSize(width: max(0, mirrorSize.width) + 2 * clampedInset,
-                  height: max(0, mirrorSize.height) + 2 * clampedInset)
-}
-
 public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, spacing: CGFloat) -> [CGRect] {
     guard count > 0, container.width > 0, container.height > 0 else { return [] }
 

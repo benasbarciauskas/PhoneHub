@@ -55,20 +55,6 @@ final class StageGeometryTests: XCTestCase {
         XCTAssertEqual(rect.minY, -98, accuracy: 0.0001)
     }
 
-    func testRequiredStageSizeIncludesInsetOnAllSides() {
-        let size = requiredStageSize(forMirrorSize: CGSize(width: 316, height: 696), inset: 12)
-
-        XCTAssertEqual(size.width, 340, accuracy: 0.0001)
-        XCTAssertEqual(size.height, 720, accuracy: 0.0001)
-    }
-
-    func testRequiredStageSizeClampsNegativeInsetAndMirrorSize() {
-        let size = requiredStageSize(forMirrorSize: CGSize(width: -10, height: 20), inset: -8)
-
-        XCTAssertEqual(size.width, 0, accuracy: 0.0001)
-        XCTAssertEqual(size.height, 20, accuracy: 0.0001)
-    }
-
     func testGridTileRectsForRequestedCounts() {
         [1, 2, 4, 5, 9].forEach { count in
             assertGridTileRects(count: count)

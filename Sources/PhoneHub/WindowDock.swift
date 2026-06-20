@@ -155,6 +155,8 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
     }
 
+    var seenSizes: Set<String> = [roundedSizeKey(currentSize)]
+
     for _ in 0..<12 {
         let actionName: String
         switch fitStep(current: currentSize, target: rect.size) {
@@ -179,10 +181,29 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
             currentSize = nextSize
             break
         }
+
+        let nextSizeKey = roundedSizeKey(nextSize)
+        if seenSizes.contains(nextSizeKey) {
+            currentSize = nextSize
+            if currentSize.width > rect.size.width || currentSize.height > rect.size.height,
+               pressViewMenuItem(pid: pid, named: "Smaller") {
+                try await Task.sleep(nanoseconds: 120_000_000)
+                if let smallerSize = readAXSize(window) {
+                    currentSize = smallerSize
+                }
+            }
+            break
+        }
+
+        seenSizes.insert(nextSizeKey)
         currentSize = nextSize
     }
 
     return try centerAXWindow(window, size: currentSize, in: rect)
+}
+
+private func roundedSizeKey(_ size: CGSize) -> String {
+    "\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
 }
 
 private func readAXSize(_ window: AXUIElement) -> CGSize? {

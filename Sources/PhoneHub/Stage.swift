@@ -14,12 +14,9 @@ struct Stage: View {
     @State private var dockingTaskID: UUID?
     @State private var dockingTaskIsWall = false
     @State private var redockTask: Task<Void, Never>?
-    @State private var stageWindow: NSWindow?
 
-    private let mirrorInset: CGFloat = 12
     private let wallInset: CGFloat = 16
     private let wallSpacing: CGFloat = 12
-    private let sidebarWidth: CGFloat = 240
 
     var body: some View {
         ZStack {
@@ -53,8 +50,6 @@ struct Stage: View {
             }
         } onWindowFrameChange: {
             scheduleDockSync()
-        } onWindowAvailable: { window in
-            stageWindow = window
         })
         .onAppear {
             syncLayout()
@@ -499,50 +494,6 @@ struct Stage: View {
         requestAccessibilityIfNeeded()
     }
 
-    private func growStageWindowIfNeeded(forMirrorSize mirrorSize: CGSize) -> Bool {
-        guard let window = stageWindow,
-              let screen = window.screen ?? NSScreen.main else {
-            return false
-        }
-
-        let requiredStage = requiredStageSize(forMirrorSize: mirrorSize, inset: mirrorInset)
-        let requiredWindowSize = CGSize(width: requiredStage.width + sidebarWidth,
-                                        height: requiredStage.height)
-        let currentFrame = window.frame
-        let visibleFrame = screen.visibleFrame
-
-        var targetWidth = max(currentFrame.width, window.minSize.width, requiredWindowSize.width)
-        var targetHeight = max(currentFrame.height, window.minSize.height, requiredWindowSize.height)
-
-        targetWidth = min(targetWidth, visibleFrame.width)
-        targetHeight = min(targetHeight, visibleFrame.height)
-
-        guard targetWidth > currentFrame.width + 0.5 || targetHeight > currentFrame.height + 0.5 else {
-            return false
-        }
-
-        let topY = currentFrame.maxY
-        var targetFrame = CGRect(x: currentFrame.minX,
-                                 y: topY - targetHeight,
-                                 width: targetWidth,
-                                 height: targetHeight)
-
-        if targetFrame.maxX > visibleFrame.maxX {
-            targetFrame.origin.x = visibleFrame.maxX - targetFrame.width
-        }
-        if targetFrame.minX < visibleFrame.minX {
-            targetFrame.origin.x = visibleFrame.minX
-        }
-        if targetFrame.minY < visibleFrame.minY {
-            targetFrame.origin.y = visibleFrame.minY
-        }
-        if targetFrame.maxY > visibleFrame.maxY {
-            targetFrame.origin.y = visibleFrame.maxY - targetFrame.height
-        }
-
-        window.setFrame(targetFrame, display: true, animate: false)
-        return true
-    }
 }
 
 struct StagePlaceholder: Equatable {
@@ -681,34 +632,28 @@ private struct PlaceholderView: View {
 private struct StageRectReader: NSViewRepresentable {
     let onChange: (CGRect) -> Void
     let onWindowFrameChange: () -> Void
-    let onWindowAvailable: (NSWindow?) -> Void
 
     func makeNSView(context: Context) -> ReportingView {
         ReportingView(onChange: onChange,
-                      onWindowFrameChange: onWindowFrameChange,
-                      onWindowAvailable: onWindowAvailable)
+                      onWindowFrameChange: onWindowFrameChange)
     }
 
     func updateNSView(_ nsView: ReportingView, context: Context) {
         nsView.onChange = onChange
         nsView.onWindowFrameChange = onWindowFrameChange
-        nsView.onWindowAvailable = onWindowAvailable
         nsView.report()
     }
 
     final class ReportingView: NSView {
         var onChange: (CGRect) -> Void
         var onWindowFrameChange: () -> Void
-        var onWindowAvailable: (NSWindow?) -> Void
         private weak var observedWindow: NSWindow?
         private var observerTokens: [NSObjectProtocol] = []
 
         init(onChange: @escaping (CGRect) -> Void,
-             onWindowFrameChange: @escaping () -> Void,
-             onWindowAvailable: @escaping (NSWindow?) -> Void) {
+             onWindowFrameChange: @escaping () -> Void) {
             self.onChange = onChange
             self.onWindowFrameChange = onWindowFrameChange
-            self.onWindowAvailable = onWindowAvailable
             super.init(frame: .zero)
         }
 
@@ -723,7 +668,6 @@ private struct StageRectReader: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             installWindowObserversIfNeeded()
-            onWindowAvailable(window)
             report()
         }
 
@@ -747,7 +691,6 @@ private struct StageRectReader: NSViewRepresentable {
             removeWindowObservers()
             guard let window else { return }
             observedWindow = window
-            onWindowAvailable(window)
 
             let center = NotificationCenter.default
             let notifications: [NSNotification.Name] = [
