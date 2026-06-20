@@ -3,6 +3,45 @@ import XCTest
 @testable import PhoneHubCore
 
 final class StageGeometryTests: XCTestCase {
+    func testFitStepShrinksWhenCurrentWidthIsLargerThanTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 401, height: 600),
+                               target: CGSize(width: 400, height: 700)),
+                       .smaller)
+    }
+
+    func testFitStepShrinksWhenCurrentHeightIsLargerThanTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 300, height: 701),
+                               target: CGSize(width: 400, height: 700)),
+                       .smaller)
+    }
+
+    func testFitStepGrowsWhenCurrentFitsTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 300, height: 600),
+                               target: CGSize(width: 400, height: 700)),
+                       .larger)
+    }
+
+    func testFitStepProbesLargerWhenCurrentIsNearTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 365, height: 665),
+                               target: CGSize(width: 400, height: 700)),
+                       .larger)
+    }
+
+    func testFitStepProbesLargerWhenCurrentEqualsTarget() {
+        XCTAssertEqual(fitStep(current: CGSize(width: 400, height: 700),
+                               target: CGSize(width: 400, height: 700)),
+                       .larger)
+    }
+
+    func testFitStepLeavesOvershootRevertToWindowLoop() {
+        let fittingSize = CGSize(width: 316, height: 696)
+        let overshootSize = CGSize(width: 406, height: 890)
+        let target = CGSize(width: 500, height: 752)
+
+        XCTAssertEqual(fitStep(current: fittingSize, target: target), .larger)
+        XCTAssertEqual(fitStep(current: overshootSize, target: target), .smaller)
+    }
+
     func testCenteredRectCentersSmallerMirrorInStage() {
         let container = CGRect(x: 10, y: 20, width: 400, height: 800)
         let rect = centeredRect(forContentSize: CGSize(width: 316, height: 696), within: container, inset: 12)
@@ -23,20 +62,6 @@ final class StageGeometryTests: XCTestCase {
         XCTAssertCentered(rect, in: container)
         XCTAssertEqual(rect.minX, -8, accuracy: 0.0001)
         XCTAssertEqual(rect.minY, -98, accuracy: 0.0001)
-    }
-
-    func testRequiredStageSizeIncludesInsetOnAllSides() {
-        let size = requiredStageSize(forMirrorSize: CGSize(width: 316, height: 696), inset: 12)
-
-        XCTAssertEqual(size.width, 340, accuracy: 0.0001)
-        XCTAssertEqual(size.height, 720, accuracy: 0.0001)
-    }
-
-    func testRequiredStageSizeClampsNegativeInsetAndMirrorSize() {
-        let size = requiredStageSize(forMirrorSize: CGSize(width: -10, height: 20), inset: -8)
-
-        XCTAssertEqual(size.width, 0, accuracy: 0.0001)
-        XCTAssertEqual(size.height, 20, accuracy: 0.0001)
     }
 
     func testGridTileRectsForRequestedCounts() {

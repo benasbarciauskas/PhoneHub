@@ -1,6 +1,21 @@
 import CoreGraphics
 import Foundation
 
+public enum FitStep: Equatable, Sendable {
+    case smaller
+    case larger
+    // Retained for compatibility; fitStep now probes larger for every fitting size.
+    case fits
+}
+
+public func fitStep(current: CGSize, target: CGSize) -> FitStep {
+    if current.width > target.width || current.height > target.height {
+        return .smaller
+    }
+
+    return .larger
+}
+
 public func centeredRect(forContentSize contentSize: CGSize, within container: CGRect, inset: CGFloat) -> CGRect {
     let width = max(0, contentSize.width)
     let height = max(0, contentSize.height)
@@ -12,12 +27,6 @@ public func centeredRect(forContentSize contentSize: CGSize, within container: C
                   y: insetContainer.midY - height / 2,
                   width: width,
                   height: height)
-}
-
-public func requiredStageSize(forMirrorSize mirrorSize: CGSize, inset: CGFloat) -> CGSize {
-    let clampedInset = max(0, inset)
-    return CGSize(width: max(0, mirrorSize.width) + 2 * clampedInset,
-                  height: max(0, mirrorSize.height) + 2 * clampedInset)
 }
 
 public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, spacing: CGFloat) -> [CGRect] {

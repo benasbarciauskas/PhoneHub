@@ -29,7 +29,10 @@ final class MirroringController {
 
         while Date() < deadline {
             do {
-                try dockWindow(ownerName: bundleID, into: rect)
+                guard let app = findIPhoneMirroringApp() else {
+                    throw WindowDockError.appNotFound(bundleID)
+                }
+                try await fitMirrorToRect(pid: app.processIdentifier, rect: rect)
                 return
             } catch let error as WindowDockError {
                 switch error {
@@ -45,7 +48,10 @@ final class MirroringController {
         }
 
         do {
-            try dockWindow(ownerName: bundleID, into: rect)
+            guard let app = findIPhoneMirroringApp() else {
+                throw WindowDockError.appNotFound(bundleID)
+            }
+            try await fitMirrorToRect(pid: app.processIdentifier, rect: rect)
         } catch {
             throw lastError ?? error
         }
