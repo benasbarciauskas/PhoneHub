@@ -70,7 +70,7 @@ final class StreamJSONParserTests: XCTestCase {
     func testParsesSuccessResult() {
         let event = StreamJSONParser.parseLine(
             #"{"type":"result","subtype":"success","result":"Done it."}"#)
-        XCTAssertEqual(event, .result(subtype: "success", text: "Done it."))
+        XCTAssertEqual(event, .result(subtype: "success", text: "Done it.", sessionId: nil))
         let update = StreamJSONParser.update(for: event)
         XCTAssertEqual(update?.finished, true)
         XCTAssertEqual(update?.failed, false)
@@ -111,5 +111,23 @@ final class StreamJSONParserTests: XCTestCase {
         XCTAssertEqual(lastAction, "Finished")
         XCTAssertTrue(finished)
         XCTAssertFalse(failed)
+    }
+
+    func testParsesSessionIdFromResultEvent() {
+        // A resumed run can re-advertise a rotated session_id on the final
+        // `result` event; the parser must surface it so the engine can capture it.
+        let event = StreamJSONParser.parseLine(
+            #"{"type":"result","subtype":"success","result":"Done.","session_id":"rotated-789"}"#)
+        guard case let .result(subtype, text, sessionId) = event else {
+            return XCTFail("not result")
+        }
+        XCTAssertEqual(subtype, "success")
+        XCTAssertEqual(text, "Done.")
+        XCTAssertEqual(sessionId, "rotated-789")
+        // A result without a session_id stays nil (tolerant — field is optional).
+        let bare = StreamJSONParser.parseLine(
+            #"{"type":"result","subtype":"success","result":"Done."}"#)
+        guard case let .result(_, _, bareSession) = bare else { return XCTFail("not result") }
+        XCTAssertNil(bareSession)
     }
 }

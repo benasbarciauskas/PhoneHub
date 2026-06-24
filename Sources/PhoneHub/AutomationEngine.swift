@@ -142,8 +142,15 @@ final class AutomationEngine {
     func reply(_ text: String) {
         guard case .awaitingInput = state,
               let plan = currentPlan,
-              let session = sessionId,
               let url = configURL else { return }
+        // The CLI rotates session_id on every --resume. If we never captured a
+        // (non-empty) id, a resume would attach to the wrong/no conversation —
+        // fail the run with a clear message instead of spawning a bad resume.
+        guard Self.canResume(sessionId: sessionId), let session = sessionId else {
+            cleanupConfig()
+            fail(Self.lostSessionMessage)
+            return
+        }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { return }
         guard let claudePath = resolveClaude() else {
@@ -206,6 +213,7 @@ final class AutomationEngine {
     /// Clear a finished/stopped/failed run from the UI and return to the list.
     func dismissResult() {
         guard !isBusy else { return }
+        cleanupConfig() // defensive: no-op if already cleaned; prevents temp-file leaks
         state = .idle
         runningPreset = nil
         currentAction = nil
@@ -217,6 +225,11 @@ final class AutomationEngine {
 
     /// Stop the active or paused run (terminate the process group).
     func stop() {
+        // A paused (awaitingInput) run has no live process — its exit already
+        // fired and returned early WITHOUT cleaning up the temp config (it was
+        // preserved for a resume). Stopping here means no future exit will run
+        // cleanupConfig, so do it now to avoid leaking the temp mcp-config file.
+        let wasAwaitingInput = isAwaitingInput
         process?.stop()
         if isBusy {
             state = .stopped
@@ -224,14 +237,23 @@ final class AutomationEngine {
             pendingQuestion = nil
             log.append("— Stopped by user —")
         }
+        if wasAwaitingInput {
+            cleanupConfig()
+        }
     }
 
     // MARK: - Stream handling
 
     private func handle(line: String) {
         let event = StreamJSONParser.parseLine(line)
-        // Capture the session id from the init event so we can resume later.
+        // Capture the session id whenever it's advertised. The CLI rotates the
+        // id on `--resume`, and a resumed run may only re-advertise it on the
+        // final `result` event (not the init `system` event), so we update the
+        // stored id from BOTH event types whenever a non-empty id is observed.
         if case let .system(_, sid) = event, let sid, !sid.isEmpty {
+            sessionId = sid
+        }
+        if case let .result(_, _, sid) = event, let sid, !sid.isEmpty {
             sessionId = sid
         }
         // Remember a pending question; the pause is settled on process exit.
@@ -295,6 +317,18 @@ final class AutomationEngine {
     private func cleanupConfig() {
         if let url = configURL { try? FileManager.default.removeItem(at: url) }
         configURL = nil
+    }
+
+    /// User-facing message when a paused run can't be resumed (no captured id).
+    static let lostSessionMessage = "Lost session — start the goal again."
+
+    /// Pure guard for `reply(_:)`: a resume is only safe with a non-empty
+    /// session id. The CLI rotates session_id on each `--resume`, so an empty /
+    /// nil id means we'd attach to the wrong or no conversation. Unit-testable
+    /// without spawning a process.
+    static func canResume(sessionId: String?) -> Bool {
+        guard let id = sessionId else { return false }
+        return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Resolve the `claude` binary: Homebrew/system paths, then ~/.local/bin.

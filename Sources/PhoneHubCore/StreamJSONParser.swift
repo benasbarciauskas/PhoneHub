@@ -7,7 +7,7 @@ public enum StreamEvent: Equatable {
     case needInput(question: String)    // model emitted `NEED_INPUT: <question>`
     case toolUse(name: String, summary: String) // model invoked a phone-control tool
     case toolResult(String)             // result of a tool call
-    case result(subtype: String, text: String?) // final result / error
+    case result(subtype: String, text: String?, sessionId: String?) // final result / error; result events re-advertise session_id
     case ignored                        // a line we don't surface
 }
 
@@ -84,7 +84,8 @@ public enum StreamJSONParser {
         case "result":
             let subtype = obj["subtype"] as? String ?? ""
             let text = obj["result"] as? String
-            return .result(subtype: subtype, text: text)
+            return .result(subtype: subtype, text: text,
+                           sessionId: obj["session_id"] as? String)
 
         default:
             return .ignored
@@ -118,7 +119,7 @@ public enum StreamJSONParser {
         case .toolUse(let name, let summary):
             let action = summary.isEmpty ? name : "\(name) \(summary)"
             return StreamUpdate(logLine: "→ \(action)", currentAction: action)
-        case .result(let subtype, let text):
+        case .result(let subtype, let text, _):
             let failed = subtype != "success"
             let line: String
             if failed {
