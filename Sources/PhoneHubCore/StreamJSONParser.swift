@@ -2,8 +2,9 @@ import Foundation
 
 /// A digested event extracted from one line of `claude --output-format stream-json`.
 public enum StreamEvent: Equatable {
-    case system(subtype: String)        // init, hooks, etc.
+    case system(subtype: String, sessionId: String?)  // init carries the session id
     case assistantText(String)          // model said something to the user
+    case needInput(question: String)    // model emitted `NEED_INPUT: <question>`
     case toolUse(name: String, summary: String) // model invoked a phone-control tool
     case toolResult(String)             // result of a tool call
     case result(subtype: String, text: String?) // final result / error
@@ -41,7 +42,8 @@ public enum StreamJSONParser {
 
         switch type {
         case "system":
-            return .system(subtype: obj["subtype"] as? String ?? "")
+            return .system(subtype: obj["subtype"] as? String ?? "",
+                           sessionId: obj["session_id"] as? String)
 
         case "assistant":
             guard let message = obj["message"] as? [String: Any],
@@ -60,7 +62,11 @@ public enum StreamJSONParser {
             for block in content where block["type"] as? String == "text" {
                 if let text = block["text"] as? String,
                    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return .assistantText(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                    let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let question = detectNeedInput(clean) {
+                        return .needInput(question: question)
+                    }
+                    return .assistantText(clean)
                 }
             }
             return .ignored
@@ -85,6 +91,21 @@ public enum StreamJSONParser {
         }
     }
 
+    /// If an assistant text contains a `NEED_INPUT: <question>` line, return the
+    /// question (the text after the marker). Pure — scans line-by-line so the
+    /// marker can appear anywhere in a multi-line message. Returns nil otherwise.
+    public static func detectNeedInput(_ text: String) -> String? {
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard let range = line.range(of: "^NEED_INPUT:\\s*",
+                                         options: [.regularExpression, .caseInsensitive]),
+                  range.lowerBound == line.startIndex else { continue }
+            let question = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if !question.isEmpty { return question }
+        }
+        return nil
+    }
+
     /// Map a parsed event to a UI update, or nil if it should be dropped.
     public static func update(for event: StreamEvent) -> StreamUpdate? {
         switch event {
@@ -92,6 +113,8 @@ public enum StreamJSONParser {
             return nil
         case .assistantText(let text):
             return StreamUpdate(logLine: text)
+        case .needInput(let question):
+            return StreamUpdate(logLine: "? \(question)", currentAction: "Needs input")
         case .toolUse(let name, let summary):
             let action = summary.isEmpty ? name : "\(name) \(summary)"
             return StreamUpdate(logLine: "→ \(action)", currentAction: action)

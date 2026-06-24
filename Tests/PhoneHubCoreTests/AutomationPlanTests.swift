@@ -97,4 +97,49 @@ final class AutomationPlanTests: XCTestCase {
         let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
         XCTAssertTrue(plan.prompt.contains("TikTok"))
     }
+
+    func testPreambleContainsNeedInputInstruction() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
+        XCTAssertTrue(plan.systemPreamble.contains("NEED_INPUT:"))
+        let lower = plan.systemPreamble.lowercased()
+        XCTAssertTrue(lower.contains("blocker"))
+        XCTAssertTrue(lower.contains("do not guess"))
+        XCTAssertTrue(lower.contains("resumed"))
+    }
+
+    func testResumeArgumentsReuseSameFlags() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 17)
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
+        let args = plan.resumeArguments(sessionId: "sess-42",
+                                        reply: "use the work account",
+                                        mcpConfigPath: "/tmp/cfg.json")
+        // --resume <id> present.
+        guard let rIdx = args.firstIndex(of: "--resume") else { return XCTFail("missing --resume") }
+        XCTAssertEqual(args[rIdx + 1], "sess-42")
+        // The reply is the -p prompt.
+        guard let pIdx = args.firstIndex(of: "-p") else { return XCTFail("missing -p") }
+        XCTAssertEqual(args[pIdx + 1], "use the work account")
+        // Same mcp / tools / max-turns as the initial run.
+        XCTAssertTrue(args.contains("--mcp-config"))
+        XCTAssertTrue(args.contains("/tmp/cfg.json"))
+        XCTAssertTrue(args.contains("--allowedTools"))
+        XCTAssertTrue(args.contains("mcp__mirroir__*"))
+        guard let mIdx = args.firstIndex(of: "--max-turns") else { return XCTFail("missing --max-turns") }
+        XCTAssertEqual(args[mIdx + 1], "17")
+        XCTAssertTrue(args.contains("--output-format"))
+        XCTAssertTrue(args.contains("stream-json"))
+        XCTAssertTrue(args.contains("--append-system-prompt"))
+        // No blanket bypass on resume either.
+        XCTAssertFalse(args.contains("--dangerously-skip-permissions"))
+    }
+
+    func testResumeArgumentsMatchInitialMcpAndTools() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.android], maxSteps: 22)
+        let plan = try buildAutomationPlan(preset: preset, device: androidDevice)
+        let resume = plan.resumeArguments(sessionId: "s", reply: "r", mcpConfigPath: "/tmp/c.json")
+        XCTAssertTrue(resume.contains("mcp__androir__*"))
+        guard let mIdx = resume.firstIndex(of: "--max-turns") else { return XCTFail("missing --max-turns") }
+        XCTAssertEqual(resume[mIdx + 1], "22")
+    }
 }

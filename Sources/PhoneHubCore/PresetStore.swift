@@ -94,6 +94,34 @@ public final class PresetStore {
         save()
     }
 
+    /// Insert a copy of `preset` ("<name> copy", fresh id) right after the original.
+    /// Returns the new preset (nil if the original isn't in the list).
+    @discardableResult
+    public func duplicate(_ preset: Preset) -> Preset? {
+        guard let idx = presets.firstIndex(where: { $0.id == preset.id }) else { return nil }
+        var copy = preset
+        copy.id = UUID()
+        copy.name = "\(preset.name) copy"
+        presets.insert(copy, at: idx + 1)
+        save()
+        return copy
+    }
+
+    /// Reorder presets; the array order is the persisted order in presets.json.
+    /// Wire to SwiftUI `.onMove` (the closure signature matches). Pure-Foundation
+    /// reimplementation of `Array.move(fromOffsets:toOffset:)` so the core module
+    /// doesn't depend on SwiftUI.
+    public func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        let moved = source.sorted().map { presets[$0] }
+        // Remove from the highest index down so earlier indices stay valid.
+        for index in source.sorted(by: >) { presets.remove(at: index) }
+        // Adjust the destination for elements removed before it.
+        let adjusted = destination - source.filter { $0 < destination }.count
+        let insertAt = max(0, min(adjusted, presets.count))
+        presets.insert(contentsOf: moved, at: insertAt)
+        save()
+    }
+
     public func presets(for platform: Platform) -> [Preset] {
         presets.filter { $0.supports(platform) }
     }
