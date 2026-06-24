@@ -14,8 +14,40 @@ final class StreamJSONParserTests: XCTestCase {
     func testParsesSystemInit() {
         let event = StreamJSONParser.parseLine(
             #"{"type":"system","subtype":"init","tools":[]}"#)
-        XCTAssertEqual(event, .system(subtype: "init"))
+        XCTAssertEqual(event, .system(subtype: "init", sessionId: nil))
         XCTAssertNil(StreamJSONParser.update(for: event)) // system is dropped
+    }
+
+    func testParsesSessionIdFromInit() {
+        let event = StreamJSONParser.parseLine(
+            #"{"type":"system","subtype":"init","session_id":"abc-123-uuid","tools":[]}"#)
+        XCTAssertEqual(event, .system(subtype: "init", sessionId: "abc-123-uuid"))
+        guard case let .system(_, sessionId) = event else { return XCTFail("not system") }
+        XCTAssertEqual(sessionId, "abc-123-uuid")
+    }
+
+    func testDetectsNeedInputAssistantLine() {
+        let event = StreamJSONParser.parseLine(
+            #"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"NEED_INPUT: What is the 2FA code?"}]}}"#)
+        XCTAssertEqual(event, .needInput(question: "What is the 2FA code?"))
+        let update = StreamJSONParser.update(for: event)
+        XCTAssertEqual(update?.currentAction, "Needs input")
+        XCTAssertTrue(update?.logLine?.contains("What is the 2FA code?") ?? false)
+    }
+
+    func testDetectNeedInputPureHelper() {
+        XCTAssertEqual(StreamJSONParser.detectNeedInput("NEED_INPUT: pick an account"), "pick an account")
+        // Marker can appear after a preamble line.
+        XCTAssertEqual(
+            StreamJSONParser.detectNeedInput("I'm blocked by a login wall.\nNEED_INPUT: which login?"),
+            "which login?")
+        // Case-insensitive marker.
+        XCTAssertEqual(StreamJSONParser.detectNeedInput("need_input: hi"), "hi")
+        // Not a marker mid-sentence.
+        XCTAssertNil(StreamJSONParser.detectNeedInput("This is not a NEED_INPUT: trap"))
+        XCTAssertNil(StreamJSONParser.detectNeedInput("just normal text"))
+        // Empty question is ignored.
+        XCTAssertNil(StreamJSONParser.detectNeedInput("NEED_INPUT:   "))
     }
 
     func testParsesAssistantText() {
@@ -38,7 +70,7 @@ final class StreamJSONParserTests: XCTestCase {
     func testParsesSuccessResult() {
         let event = StreamJSONParser.parseLine(
             #"{"type":"result","subtype":"success","result":"Done it."}"#)
-        XCTAssertEqual(event, .result(subtype: "success", text: "Done it."))
+        XCTAssertEqual(event, .result(subtype: "success", text: "Done it.", sessionId: nil))
         let update = StreamJSONParser.update(for: event)
         XCTAssertEqual(update?.finished, true)
         XCTAssertEqual(update?.failed, false)
@@ -79,5 +111,23 @@ final class StreamJSONParserTests: XCTestCase {
         XCTAssertEqual(lastAction, "Finished")
         XCTAssertTrue(finished)
         XCTAssertFalse(failed)
+    }
+
+    func testParsesSessionIdFromResultEvent() {
+        // A resumed run can re-advertise a rotated session_id on the final
+        // `result` event; the parser must surface it so the engine can capture it.
+        let event = StreamJSONParser.parseLine(
+            #"{"type":"result","subtype":"success","result":"Done.","session_id":"rotated-789"}"#)
+        guard case let .result(subtype, text, sessionId) = event else {
+            return XCTFail("not result")
+        }
+        XCTAssertEqual(subtype, "success")
+        XCTAssertEqual(text, "Done.")
+        XCTAssertEqual(sessionId, "rotated-789")
+        // A result without a session_id stays nil (tolerant — field is optional).
+        let bare = StreamJSONParser.parseLine(
+            #"{"type":"result","subtype":"success","result":"Done."}"#)
+        guard case let .result(_, _, bareSession) = bare else { return XCTFail("not result") }
+        XCTAssertNil(bareSession)
     }
 }

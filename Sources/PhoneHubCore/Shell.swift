@@ -48,6 +48,13 @@ public func resolveTool(_ name: String) -> String? {
 /// Run a tool with an argv list (never a shell string). Binary-safe stdout.
 public func runTool(_ name: String, _ args: [String], timeout: TimeInterval = 30) throws -> CommandResult {
     guard let path = resolveTool(name) else { throw ShellError.toolNotFound(name) }
+    return try runToolAt(path: path, args: args, timeout: timeout)
+}
+
+/// Run an explicit executable path with an argv list (never a shell string).
+/// Used when the caller has already resolved the binary (e.g. `claude` from
+/// ~/.local/bin, which `resolveTool` doesn't search).
+public func runToolAt(path: String, args: [String], timeout: TimeInterval = 30) throws -> CommandResult {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: path)
     proc.arguments = args

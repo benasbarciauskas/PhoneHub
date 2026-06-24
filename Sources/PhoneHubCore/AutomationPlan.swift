@@ -29,6 +29,26 @@ public struct AutomationPlan: Equatable {
             "--permission-mode", "default"
         ]
     }
+
+    /// Full argv to RESUME an existing session with the user's reply. Reuses the
+    /// SAME mcp-config / allowedTools / max-turns / preamble as the initial run so
+    /// the resumed turn keeps the phone-control tools and step cap. Verified flag:
+    /// `claude --resume <id> -p "<reply>" ...` (from `claude --help`: `-r, --resume`).
+    public func resumeArguments(sessionId: String,
+                                reply: String,
+                                mcpConfigPath: String) -> [String] {
+        [
+            "--resume", sessionId,
+            "-p", reply,
+            "--append-system-prompt", systemPreamble,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--mcp-config", mcpConfigPath,
+            "--allowedTools", allowedTools,
+            "--max-turns", String(maxTurns),
+            "--permission-mode", "default"
+        ]
+    }
 }
 
 /// Neutral, operational system preamble for the spawned agent. No
@@ -37,6 +57,11 @@ public let automationSystemPreamble = """
 You control a phone through the attached tools. Achieve the goal. Use only the \
 attached phone-control tools. Stop when the goal is met or the step cap is \
 reached. Dwell briefly on content as a human would.
+
+If you hit a blocker you cannot resolve yourself (a login wall, 2FA, captcha, an \
+ambiguous choice, or missing information), do NOT guess. Emit a single line \
+exactly `NEED_INPUT: <your concise question>` and end your turn. You will be \
+resumed with the user's answer.
 """
 
 /// Build the launch plan for a preset on a device. Pure function — no I/O.

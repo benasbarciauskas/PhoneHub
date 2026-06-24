@@ -1,7 +1,8 @@
 import SwiftUI
 import PhoneHubCore
 
-/// Presets list + live run view. Shown in the Sidebar below the device list.
+/// Presets list + free-form command box + live run view. Shown in the Sidebar
+/// below the device list.
 struct PresetsPanel: View {
     @Bindable var store: PresetStore
     var engine: AutomationEngine
@@ -9,12 +10,23 @@ struct PresetsPanel: View {
 
     @State private var editing: Preset?
     @State private var showingSheet = false
+    @State private var prefillGoal = ""
+
+    // Free-form command box.
+    @State private var command = ""
+    @State private var refineError: String?
 
     private var platform: Platform? { focused?.platform }
 
     private var visiblePresets: [Preset] {
         guard let platform else { return store.presets }
         return store.presets(for: platform)
+    }
+
+    private var canRunCommand: Bool {
+        guard let focused, focused.isReady || focused.platform == .ios else { return false }
+        return !engine.isBusy
+            && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -24,27 +36,100 @@ struct PresetsPanel: View {
                 Spacer()
                 Button {
                     editing = nil
+                    prefillGoal = ""
                     showingSheet = true
                 } label: { Image(systemName: "plus") }
                     .buttonStyle(.plain).foregroundStyle(Theme.subtext)
             }
             .padding(.horizontal, Theme.s3)
 
-            if engine.isRunning || engine.runningPreset != nil {
+            if engine.isBusy || engine.runningPreset != nil {
                 runView
                     .padding(.horizontal, Theme.s2)
             } else {
+                commandBox
+                    .padding(.horizontal, Theme.s2)
                 listView
             }
         }
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
-            PresetEditSheet(preset: editing) { result in
+            PresetEditSheet(preset: editing, prefillGoal: prefillGoal, engine: engine) { result in
                 if let existing = editing, existing.id == result.id {
                     store.update(result)
                 } else {
                     store.add(result)
                 }
+            }
+        }
+    }
+
+    // MARK: - Command box
+
+    private var commandBox: some View {
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            TextField("Type a one-off command…", text: $command, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12))
+            HStack(spacing: Theme.s2) {
+                Button {
+                    if let device = focused {
+                        let goal = command
+                        command = ""
+                        engine.runAdhoc(goal: goal, on: device)
+                    }
+                } label: {
+                    Label("Run", systemImage: "play.fill").font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canRunCommand ? Theme.accent : Theme.subtext.opacity(0.4))
+                .disabled(!canRunCommand)
+
+                Button { refineCommand() } label: {
+                    if engine.isRefining {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Refine", systemImage: "sparkles").font(.system(size: 11))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.subtext)
+                .disabled(engine.isRefining
+                          || command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Spacer()
+
+                Button {
+                    editing = nil
+                    prefillGoal = command
+                    showingSheet = true
+                } label: {
+                    Text("Save as preset").font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.subtext)
+                .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if let refineError {
+                Text(refineError)
+                    .font(.system(size: 10)).foregroundStyle(Theme.err)
+                    .lineLimit(2)
+            }
+        }
+        .padding(Theme.s2)
+        .cardSurface()
+    }
+
+    private func refineCommand() {
+        let text = command
+        refineError = nil
+        Task {
+            do {
+                let rewritten = try await engine.refine(text)
+                command = rewritten
+            } catch {
+                refineError = "Refine failed: \(error.localizedDescription)"
             }
         }
     }
@@ -64,7 +149,8 @@ struct PresetsPanel: View {
                     preset: preset,
                     canRun: canRun(preset),
                     onRun: { if let device = focused { engine.run(preset: preset, on: device) } },
-                    onEdit: { editing = preset; showingSheet = true },
+                    onEdit: { editing = preset; prefillGoal = ""; showingSheet = true },
+                    onDuplicate: { store.duplicate(preset) },
                     onDelete: { store.delete(preset) }
                 )
             }
@@ -75,7 +161,7 @@ struct PresetsPanel: View {
     private func canRun(_ preset: Preset) -> Bool {
         guard let focused, focused.isReady || focused.platform == .ios else { return false }
         guard preset.supports(focused.platform) else { return false }
-        return !engine.isRunning
+        return !engine.isBusy
     }
 
     // MARK: - Running
@@ -87,7 +173,7 @@ struct PresetsPanel: View {
                 Text(engine.runningPreset?.name ?? "Run")
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 Spacer()
-                if engine.isRunning {
+                if engine.isBusy {
                     Button("Stop") { engine.stop() }
                         .buttonStyle(.plain)
                         .foregroundStyle(Theme.err)
@@ -118,17 +204,57 @@ struct PresetsPanel: View {
                     if count > 0 { withAnimation { proxy.scrollTo(count - 1, anchor: .bottom) } }
                 }
             }
-            if !engine.isRunning {
-                Button("Done") {
-                    engine.dismissResult()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
-                .font(.system(size: 12, weight: .semibold))
+
+            if case let .awaitingInput(question) = engine.state {
+                AwaitingInputView(question: question) { engine.reply($0) }
+            }
+
+            if !engine.isBusy {
+                Button("Done") { engine.dismissResult() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .font(.system(size: 12, weight: .semibold))
             }
         }
         .padding(Theme.s3)
         .cardSurface()
+    }
+}
+
+/// The reply prompt shown while the agent is paused awaiting the user's answer.
+private struct AwaitingInputView: View {
+    let question: String
+    let onSend: (String) -> Void
+    @State private var reply = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            HStack(spacing: Theme.s1) {
+                Image(systemName: "questionmark.circle.fill")
+                    .foregroundStyle(Theme.accent).font(.system(size: 12))
+                Text("Needs your input")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text)
+            }
+            Text(question)
+                .font(.system(size: 12)).foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Theme.s2) {
+                TextField("Your answer…", text: $reply, axis: .vertical)
+                    .lineLimit(1...3).textFieldStyle(.roundedBorder).font(.system(size: 12))
+                Button("Send") {
+                    let answer = reply
+                    reply = ""
+                    onSend(answer)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                 ? Theme.subtext.opacity(0.4) : Theme.accent)
+                .font(.system(size: 12, weight: .semibold))
+                .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(Theme.s2)
+        .cardSurface(elevated: true)
     }
 }
 
@@ -137,6 +263,7 @@ private struct PresetRow: View {
     let canRun: Bool
     let onRun: () -> Void
     let onEdit: () -> Void
+    let onDuplicate: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -158,96 +285,11 @@ private struct PresetRow: View {
         .padding(.vertical, Theme.s2).padding(.horizontal, Theme.s3)
         .contentShape(Rectangle())
         .contextMenu {
+            Button("Run", action: onRun).disabled(!canRun)
             Button("Edit", action: onEdit)
+            Button("Duplicate", action: onDuplicate)
+            Divider()
             Button("Delete", role: .destructive, action: onDelete)
-        }
-    }
-}
-
-/// Add / edit sheet for a preset.
-private struct PresetEditSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let original: Preset?
-    let onSave: (Preset) -> Void
-
-    @State private var name: String
-    @State private var goal: String
-    @State private var app: String
-    @State private var ios: Bool
-    @State private var android: Bool
-    @State private var maxSteps: Int
-
-    init(preset: Preset?, onSave: @escaping (Preset) -> Void) {
-        self.original = preset
-        self.onSave = onSave
-        _name = State(initialValue: preset?.name ?? "")
-        _goal = State(initialValue: preset?.goal ?? "")
-        _app = State(initialValue: preset?.app ?? "")
-        _ios = State(initialValue: preset?.platforms.contains(.ios) ?? true)
-        _android = State(initialValue: preset?.platforms.contains(.android) ?? true)
-        _maxSteps = State(initialValue: preset?.maxSteps ?? 40)
-    }
-
-    private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-            && !goal.trimmingCharacters(in: .whitespaces).isEmpty
-            && (ios || android)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s3) {
-            Text(original == nil ? "New Preset" : "Edit Preset")
-                .font(.headline).foregroundStyle(Theme.text)
-
-            field("Name") { TextField("Open Instagram", text: $name).textFieldStyle(.roundedBorder) }
-            field("Goal") {
-                TextField("Plain-English instruction", text: $goal, axis: .vertical)
-                    .lineLimit(2...5).textFieldStyle(.roundedBorder)
-            }
-            field("App (optional)") { TextField("Instagram", text: $app).textFieldStyle(.roundedBorder) }
-
-            field("Platforms") {
-                HStack(spacing: Theme.s3) {
-                    Toggle("iOS", isOn: $ios)
-                    Toggle("Android", isOn: $android)
-                }
-            }
-            field("Max steps") {
-                Stepper("\(maxSteps)", value: $maxSteps, in: 1...200, step: 5)
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    var platforms: [Platform] = []
-                    if ios { platforms.append(.ios) }
-                    if android { platforms.append(.android) }
-                    let result = Preset(
-                        id: original?.id ?? UUID(),
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        goal: goal.trimmingCharacters(in: .whitespaces),
-                        app: app.trimmingCharacters(in: .whitespaces).isEmpty ? nil
-                            : app.trimmingCharacters(in: .whitespaces),
-                        platforms: platforms,
-                        maxSteps: maxSteps
-                    )
-                    onSave(result)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
-            }
-        }
-        .padding(Theme.s6)
-        .frame(width: 380)
-        .background(Theme.surface)
-    }
-
-    private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: Theme.s1) {
-            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.subtext)
-            content()
         }
     }
 }
