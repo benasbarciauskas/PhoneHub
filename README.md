@@ -159,3 +159,42 @@ This README and roadmap fill in progressionally as the project grows.
 [Apache-2.0](LICENSE).
 
 <p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+---
+
+## PhoneDrop — drag-to-phone Dock droplet
+
+Drag a photo onto the PhoneDrop Dock icon → strips EXIF/GPS metadata (on a copy, original untouched) → pushes it directly to your Motorola via `adb over Tailscale` → auto-appears in the phone's gallery. Works across any network; no web server, no tap required on the phone.
+
+### One-time setup
+
+1. **Phone — Tailscale:** Install the Tailscale app, log into your tailnet.
+2. **Phone — Wireless Debugging:** Developer Options → Wireless debugging → enable it, then pair with the Mac once (`adb pair <ip>:<port>`). After pairing, run `adb tcpip 5555` on the Mac to pin a stable port.
+3. **Mac — install PhoneDrop:**
+   ```bash
+   scripts/phonedrop.sh install
+   ```
+   When prompted, enter the phone's Tailscale MagicDNS hostname (e.g. `motorola`). If not prompted, edit `~/.config/phonedrop/config` and set `PHONE_HOST`.
+4. **Dock:** Drag `~/Applications/PhoneDrop.app` to your Dock.
+
+### Usage
+
+- **Drop photos** onto the PhoneDrop Dock icon — they land in the Motorola's gallery.
+- **CLI:**
+  ```bash
+  scripts/phonedrop.sh connect      # Test the adb connection
+  scripts/phonedrop.sh status       # Show config, tool paths, adb state
+  scripts/phonedrop.sh config       # Print config path and values
+  scripts/phonedrop.sh check        # Run smoke tests
+  scripts/phonedrop.sh push file1.jpg "photo with spaces.jpg"
+  ```
+
+### Tests (no phone required)
+
+```bash
+bash tests/phonedrop_test.sh
+```
+
+Asserts config parsing, arg quoting with spaces, and that `exiftool -all=` actually removes GPS/EXIF tags.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
