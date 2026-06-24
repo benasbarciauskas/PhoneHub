@@ -1,0 +1,71 @@
+name: Bug report
+description: Report something that isn't working as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in the sections
+        below so the issue can be reproduced. Do **not** paste secrets, tokens,
+        account credentials, or device identifiers you'd rather keep private.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you observed.
+      placeholder: When I select my iPhone, the mirror window opens but never docks into the stage.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact sequence of clicks or actions that triggers it.
+      placeholder: |
+        1. Launch PhoneHub
+        2. Select an Android device in the sidebar
+        3. Click Focus
+        4. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which device platform?
+      options:
+        - iOS (iPhone Mirroring)
+        - Android (scrcpy / adb)
+        - Both
+        - Not device-specific
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Environment
+      description: |
+        Versions help a lot. Run the commands and paste the output.
+      value: |
+        - PhoneHub commit / version:
+        - macOS version:
+        - `swift --version`:
+        - Android: `adb --version`, `scrcpy --version` (if relevant):
+        - Device model / OS version (redact serials if needed):
+        - Automation deps installed (mirroir / androir / `claude` CLI)?:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output (optional)
+      description: Relevant run-log output or error messages. Redact anything sensitive.
+      render: text
+    validations:
+      required: false
