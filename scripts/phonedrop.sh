@@ -312,7 +312,13 @@ PYEOF
         local dest_safe
         dest_safe="$(sq_escape "${DEST}")"
         local writable
-        writable=$("${ADB_BIN}" shell "test -w '${dest_safe}' && echo yes || echo no" 2>/dev/null || echo "unknown")
+        local check_target=""
+        check_target=$(select_adb_target 2>/dev/null || true)
+        if [[ -n "${check_target}" ]]; then
+          writable=$("${ADB_BIN}" -s "${check_target}" shell "test -w '${dest_safe}' && echo yes || echo no" 2>/dev/null || echo "unknown")
+        else
+          writable="no device"
+        fi
         echo "[info] DEST writable: ${writable}"
       else
         echo "[FAIL] adb connect failed: ${result}"
