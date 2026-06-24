@@ -3,6 +3,8 @@ import PhoneHubCore
 
 struct Sidebar: View {
     @Bindable var store: DeviceStore
+    @Bindable var presetStore: PresetStore
+    var engine: AutomationEngine
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -40,6 +42,13 @@ struct Sidebar: View {
                     }
                 }
                 .padding(.horizontal, Theme.s2)
+            }
+            .frame(maxHeight: 280)
+
+            Divider().overlay(Theme.border).padding(.horizontal, Theme.s3)
+
+            ScrollView {
+                PresetsPanel(store: presetStore, engine: engine, focused: store.focusedDevice)
             }
         }
         .frame(width: 240)
