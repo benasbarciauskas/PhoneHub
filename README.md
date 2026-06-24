@@ -24,10 +24,9 @@ plain-English goal with AI automation presets.
 </div>
 
 > [!NOTE]
-> PhoneHub runs **locally** and holds **no credentials**. It is built for a
-> single owner driving **their own** devices and accounts — discovery,
-> mirroring, focus, and personal automation. It is **not** a device farm: there
-> is no anti-detection, proxy/SIM rotation, or multi-account orchestration.
+> PhoneHub runs **locally** and holds **no credentials** — discovery, mirroring,
+> and automation all happen on your Mac, talking only to the phones `adb` and
+> iPhone Mirroring already see.
 
 ## ✨ What is PhoneHub?
 
@@ -131,8 +130,7 @@ for Android. The agent then loops:
 4. **Repeat** until the goal is met.
 
 The whole run streams into PhoneHub's **live log**, and a visible **Stop** ends
-it at any time. Presets are scoped to personal automation of your own devices —
-PhoneHub will not run goals framed around evading platform integrity systems.
+it at any time.
 
 <p align="right"><a href="#readme-top">back to top ↑</a></p>
 
