@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","cwd":"/tmp","session_id":"abc","tools":["mcp__mirroir__tap"]}
+{"type":"system","subtype":"hook_started","hook_name":"SessionStart:startup"}
+{"type":"assistant","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"text","text":"Opening Instagram now."}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"tool_use","name":"mcp__mirroir__launch_app","input":{"name":"Instagram"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"launched"}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"tool_use","name":"mcp__mirroir__tap","input":{"x":120,"y":340}}]}}
+{"type":"result","subtype":"success","result":"Instagram home feed is visible."}

@@ -12,7 +12,8 @@ let package = Package(
         ),
         .testTarget(
             name: "PhoneHubCoreTests",
-            dependencies: ["PhoneHubCore"]
+            dependencies: ["PhoneHubCore"],
+            exclude: ["Fixtures/stream-sample.ndjson"]
         ),
         .testTarget(
             name: "PhoneHubTests",
