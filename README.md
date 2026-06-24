@@ -168,7 +168,7 @@ Drag a photo onto the PhoneDrop Dock icon → strips EXIF/GPS metadata (on a cop
 
 ### One-time setup
 
-1. **Phone — Tailscale:** Install the Tailscale app, log into your tailnet.
+1. **Phone — Tailscale:** Install the Tailscale app, log into your tailnet. On Android, enable always-on VPN for Tailscale and exclude Tailscale from battery optimization.
 2. **Phone — Wireless Debugging:** Developer Options → Wireless debugging → enable it, then pair with the Mac once (`adb pair <ip>:<port>`). After pairing, run `adb tcpip 5555` on the Mac to pin a stable port.
 3. **Mac — install PhoneDrop:**
    ```bash
@@ -180,9 +180,12 @@ Drag a photo onto the PhoneDrop Dock icon → strips EXIF/GPS metadata (on a cop
 ### Usage
 
 - **Drop photos** onto the PhoneDrop Dock icon — they land in the Motorola's gallery.
+- Drops use wireless adb over Tailscale when available, and fall back to USB automatically when a cable is connected.
+- After a phone reboot, Android resets the wireless adb listener. Plug in via USB and run `scripts/phonedrop.sh rearm`.
 - **CLI:**
   ```bash
   scripts/phonedrop.sh connect      # Test the adb connection
+  scripts/phonedrop.sh rearm        # Re-enable wireless adb after a phone reboot
   scripts/phonedrop.sh status       # Show config, tool paths, adb state
   scripts/phonedrop.sh config       # Print config path and values
   scripts/phonedrop.sh check        # Run smoke tests
