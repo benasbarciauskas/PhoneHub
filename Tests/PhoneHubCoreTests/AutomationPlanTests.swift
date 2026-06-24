@@ -13,7 +13,7 @@ final class AutomationPlanTests: XCTestCase {
                             platforms: [.ios], maxSteps: 25)
         let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
         XCTAssertEqual(plan.serverName, "mirroir")
-        XCTAssertEqual(plan.allowedTools, "mcp__mirroir")
+        XCTAssertEqual(plan.allowedTools, "mcp__mirroir__*")
         XCTAssertTrue(plan.mcpConfigJSON.contains("\"mirroir\""))
         XCTAssertTrue(plan.mcpConfigJSON.contains("mirroir-mcp"))
         XCTAssertTrue(plan.mcpConfigJSON.contains("npx"))
@@ -23,13 +23,15 @@ final class AutomationPlanTests: XCTestCase {
     func testAndroidRoutesToAndroirWithSerial() throws {
         let preset = Preset(name: "Open IG", goal: "open instagram",
                             platforms: [.android], maxSteps: 30)
-        let plan = try buildAutomationPlan(preset: preset, device: androidDevice,
-                                           androirEntry: "/x/dist/index.js")
+        let plan = try buildAutomationPlan(preset: preset, device: androidDevice)
         XCTAssertEqual(plan.serverName, "androir")
-        XCTAssertEqual(plan.allowedTools, "mcp__androir")
+        XCTAssertEqual(plan.allowedTools, "mcp__androir__*")
         XCTAssertTrue(plan.mcpConfigJSON.contains("\"androir\""))
-        XCTAssertTrue(plan.mcpConfigJSON.contains("/x/dist/index.js"))
-        XCTAssertTrue(plan.mcpConfigJSON.contains("\"node\""))
+        XCTAssertTrue(plan.mcpConfigJSON.contains("androir-mcp"))
+        XCTAssertTrue(plan.mcpConfigJSON.contains("\"npx\""))
+        // Portable launch: no hardcoded local path / node entry point.
+        XCTAssertFalse(plan.mcpConfigJSON.contains("/Volumes/"))
+        XCTAssertFalse(plan.mcpConfigJSON.contains("dist/index.js"))
         // Serial is injected into the prompt so the agent passes it per-tool.
         XCTAssertTrue(plan.prompt.contains("ABC123XYZ"))
         XCTAssertEqual(plan.maxTurns, 30)
@@ -71,7 +73,7 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertTrue(args.contains("--mcp-config"))
         XCTAssertTrue(args.contains("/tmp/cfg.json"))
         XCTAssertTrue(args.contains("--allowedTools"))
-        XCTAssertTrue(args.contains("mcp__mirroir"))
+        XCTAssertTrue(args.contains("mcp__mirroir__*"))
         XCTAssertTrue(args.contains("--append-system-prompt"))
         // No blanket bypass of permissions on the claude spawn.
         XCTAssertFalse(args.contains("--dangerously-skip-permissions"))

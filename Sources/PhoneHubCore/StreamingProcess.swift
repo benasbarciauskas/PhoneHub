@@ -17,6 +17,10 @@ public final class StreamingProcess: @unchecked Sendable {
 
     private let lock = NSLock()
     private var buffer = Data()
+    private var errBuffer = Data()
+    private var errTail: [String] = []   // last N stderr lines (ring buffer)
+    private let errTailCap = 10
+    private static let errLineCap = 2_000   // per-line char cap to bound memory
     private var started = false
     private var exited = false
 
@@ -33,8 +37,12 @@ public final class StreamingProcess: @unchecked Sendable {
 
     /// Start the process. `onLine` fires for each complete stdout line;
     /// `onExit` fires once with the exit code after the process ends.
+    /// `onExit` fires once with the exit code and a diagnostic message. On a
+    /// non-zero/abnormal exit the message includes the last few stderr lines so
+    /// a failed run (e.g. "MCP server failed to start") is diagnosable. stderr
+    /// here is process diagnostics only — no secrets are emitted.
     public func start(onLine: @escaping @Sendable (String) -> Void,
-                      onExit: @escaping @Sendable (Int32) -> Void) throws {
+                      onExit: @escaping @Sendable (Int32, String) -> Void) throws {
         lock.lock()
         guard !started else { lock.unlock(); return }
         started = true
@@ -86,7 +94,12 @@ public final class StreamingProcess: @unchecked Sendable {
             self.lock.unlock()
             for line in lines { onLine(line) }
         }
-        errHandle.readabilityHandler = { handle in _ = handle.availableData }
+        errHandle.readabilityHandler = { [weak self] handle in
+            guard let self else { return }
+            let chunk = handle.availableData
+            if chunk.isEmpty { handle.readabilityHandler = nil; return }
+            self.appendStderr(chunk)
+        }
 
         // Reap the child on a background thread and report its exit code.
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -94,8 +107,57 @@ public final class StreamingProcess: @unchecked Sendable {
             waitpid(childPID, &status, 0)
             let code: Int32 = (status & 0x7f) == 0 ? (status >> 8) & 0xff : -1
             self?.markExited()
-            onExit(code)
+            let reason = self?.exitReason(code: code) ?? ""
+            onExit(code, reason)
         }
+    }
+
+    private func appendStderr(_ chunk: Data) {
+        lock.lock()
+        errBuffer.append(chunk)
+        let newline = UInt8(ascii: "\n")
+        while let idx = errBuffer.firstIndex(of: newline) {
+            let lineData = errBuffer[errBuffer.startIndex..<idx]
+            errBuffer.removeSubrange(errBuffer.startIndex...idx)
+            recordErrLine(lineData)
+        }
+        // Bound the in-flight (no-newline-yet) buffer too.
+        if errBuffer.count > Self.errLineCap * 4 {
+            errBuffer.removeSubrange(errBuffer.startIndex..<errBuffer.index(errBuffer.endIndex, offsetBy: -Self.errLineCap))
+        }
+        lock.unlock()
+    }
+
+    /// Caller must hold `lock`.
+    private func recordErrLine(_ data: Data) {
+        guard var s = String(data: data, encoding: .utf8) else { return }
+        s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return }
+        if s.count > Self.errLineCap { s = String(s.prefix(Self.errLineCap)) + "…" }
+        errTail.append(s)
+        if errTail.count > errTailCap { errTail.removeFirst(errTail.count - errTailCap) }
+    }
+
+    /// Snapshot of the last few stderr lines captured from the child.
+    public func stderrTail() -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        // Include any trailing partial line that never got a newline.
+        var tail = errTail
+        if let s = String(data: errBuffer, encoding: .utf8) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { tail.append(t.count > Self.errLineCap ? String(t.prefix(Self.errLineCap)) + "…" : t) }
+        }
+        return Array(tail.suffix(errTailCap))
+    }
+
+    private func exitReason(code: Int32) -> String {
+        if code == 0 { return "exited cleanly" }
+        let tail = stderrTail()
+        var msg = code < 0 ? "terminated abnormally" : "exited with code \(code)"
+        if !tail.isEmpty {
+            msg += "; last stderr:\n" + tail.joined(separator: "\n")
+        }
+        return msg
     }
 
     private func markExited() {

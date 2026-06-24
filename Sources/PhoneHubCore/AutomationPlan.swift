@@ -1,9 +1,5 @@
 import Foundation
 
-/// Default location of the androir-mcp entry point. Overridable for tests.
-public let defaultAndroirEntry =
-    "/Volumes/X10 Pro/Ruflo/projects/androir-mcp/dist/index.js"
-
 public enum AutomationPlanError: Error, Equatable {
     case platformMismatch
     case invalidSerial
@@ -46,8 +42,7 @@ reached. Dwell briefly on content as a human would.
 /// Build the launch plan for a preset on a device. Pure function — no I/O.
 public func buildAutomationPlan(
     preset: Preset,
-    device: Device,
-    androirEntry: String = defaultAndroirEntry
+    device: Device
 ) throws -> AutomationPlan {
     guard preset.supports(device.platform) else {
         throw AutomationPlanError.platformMismatch
@@ -61,7 +56,10 @@ public func buildAutomationPlan(
     switch device.platform {
     case .ios:
         serverName = "mirroir"
-        allowedTools = "mcp__mirroir"
+        allowedTools = "mcp__mirroir__*"
+        // `--dangerously-skip-permissions` here is mirroir-mcp's OWN
+        // device-permission flag (it skips mirroir's per-action prompts), NOT a
+        // flag on the `claude` spawn. Do not remove it as a "security bug".
         mcpConfigJSON = mcpConfig(
             server: "mirroir",
             command: "npx",
@@ -73,11 +71,11 @@ public func buildAutomationPlan(
             throw AutomationPlanError.invalidSerial
         }
         serverName = "androir"
-        allowedTools = "mcp__androir"
+        allowedTools = "mcp__androir__*"
         mcpConfigJSON = mcpConfig(
             server: "androir",
-            command: "node",
-            args: [androirEntry]
+            command: "npx",
+            args: ["-y", "androir-mcp"]
         )
         // androir takes the serial as a per-tool `serial` argument; tell the
         // agent to pass it so multi-device setups target the right phone.

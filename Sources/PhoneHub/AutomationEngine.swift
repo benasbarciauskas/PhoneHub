@@ -86,8 +86,8 @@ final class AutomationEngine {
                 onLine: { [weak self] line in
                     Task { @MainActor in self?.handle(line: line) }
                 },
-                onExit: { [weak self] code in
-                    Task { @MainActor in self?.handleExit(code: code) }
+                onExit: { [weak self] code, reason in
+                    Task { @MainActor in self?.handleExit(code: code, reason: reason) }
                 }
             )
         } catch {
@@ -130,7 +130,7 @@ final class AutomationEngine {
         if log.count > 500 { log.removeFirst(log.count - 500) }
     }
 
-    private func handleExit(code: Int32) {
+    private func handleExit(code: Int32, reason: String) {
         cleanupConfig()
         process = nil
         switch state {
@@ -141,9 +141,12 @@ final class AutomationEngine {
                 state = .finished
                 currentAction = "Finished"
             } else {
-                state = .failed("claude exited with code \(code)")
+                // `reason` carries the last stderr lines so a launch failure
+                // (e.g. "MCP server failed to start") is diagnosable.
+                let msg = reason.isEmpty ? "claude exited with code \(code)" : "claude \(reason)"
+                state = .failed(msg)
                 currentAction = "Failed"
-                log.append("claude exited with code \(code)")
+                log.append(msg)
             }
         default:
             break
