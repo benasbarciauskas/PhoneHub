@@ -1,56 +1,161 @@
+<a id="readme-top"></a>
+
+<div align="center">
+
+<img src="assets/logo.svg" width="96" height="96" alt="PhoneHub logo">
+
 # PhoneHub
 
-Multi-device mirroring and automation dashboard for connected iPhones and
-Android phones, from one Mac app. Open source.
+**Mirror and automate your iPhones and Android phones from one Mac.**
 
-## Architecture
+A native macOS app that discovers your connected iPhones and Android phones,
+docks their real mirror windows into a single stage — Apple's iPhone Mirroring
+for iOS, `scrcpy` for Android — and can drive any one of them toward a
+plain-English goal with AI automation presets.
 
-PhoneHub orchestrates native mirror windows and can drive them with AI
-automation presets.
+[![CI](https://github.com/benasbarciauskas/PhoneHub/actions/workflows/ci.yml/badge.svg)](https://github.com/benasbarciauskas/PhoneHub/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-5B8CFF?style=flat-square)](LICENSE)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-3DD0E0?style=flat-square&logo=apple&logoColor=white)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
+[![AI presets](https://img.shields.io/badge/AI-presets-6E56CF?style=flat-square)](#-ai-presets)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/benasbarciauskas/PhoneHub/pulls)
+[![Stars](https://img.shields.io/github/stars/benasbarciauskas/PhoneHub?style=flat-square)](https://github.com/benasbarciauskas/PhoneHub/stargazers)
 
-- Android: launches `scrcpy -s <serial>` borderless and positions the window into
-  the PhoneHub stage with scrcpy window flags.
-- iOS: opens Apple's iPhone Mirroring app (`com.apple.ScreenContinuity`), finds
-  its window, and docks it into the stage using the macOS Accessibility API.
-- Automation: presets run an AI agent that reads the screen and drives the
-  device toward a goal — iOS via [mirroir](https://github.com/jfarcand/mirroir-mcp),
-  Android via [androir](https://github.com/benasbarciauskas/androir-mcp)
-  (adb / uiautomator).
-- PhoneHub is the dashboard: discovery, focus selection, launch, window
-  placement, and preset automation live in the app.
+</div>
 
-## Requirements
+> [!NOTE]
+> PhoneHub runs **locally** and holds **no credentials** — discovery, mirroring,
+> and automation all happen on your Mac, talking only to the phones `adb` and
+> iPhone Mirroring already see.
 
-- macOS 14+ and Swift/Xcode tooling.
-- Android: `brew install android-platform-tools scrcpy`.
-- iOS docking: grant PhoneHub Accessibility in System Settings -> Privacy &
-  Security -> Accessibility.
-- Automation (optional): mirroir (iOS) and/or androir (Android) on the host,
-  plus the `claude` CLI for the agent loop.
-- Stable signing: `build-app.sh` creates and uses a persistent self-signed
-  identity named `PhoneHub Self-Signed` in `phonehub-signing.keychain-db` so the
-  Accessibility grant survives rebuilds.
+## ✨ What is PhoneHub?
 
-## Build & Run
+PhoneHub is a native SwiftUI dashboard that brings every phone on your desk into
+one Mac window. It discovers connected **iPhones** (via Apple's iPhone
+Mirroring) and **Android phones** (via `adb`), launches each device's real
+mirror window, and docks it into a managed stage — so you can watch one phone up
+close, or lay several out side by side as a video wall.
+
+On top of the mirror, PhoneHub adds **AI automation presets**: a preset is a
+plain-English goal, and running it spawns a headless agent that reads the
+device's screen and drives it toward that goal — recovering from popups along
+the way — while PhoneHub streams the run log and gives you a Stop button.
+
+Everything is native and local. Mirroring uses the OS's own surfaces (iPhone
+Mirroring and `scrcpy`); automation shells out to the [mirroir](https://github.com/jfarcand/mirroir-mcp)
+(iOS) and [androir](https://github.com/benasbarciauskas/androir-mcp) (Android)
+MCP servers plus the `claude` CLI. PhoneHub itself is the dashboard around them.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+## 🚀 Features
+
+- 📱 **Multi-device discovery** — enumerate connected iPhones and Android phones
+  in one sidebar, with live state, model, and connection info.
+- 🪞 **Native mirroring & docking** — open each device's real mirror window and
+  dock it into the PhoneHub stage:
+  - **iOS** via Apple's iPhone Mirroring (`com.apple.ScreenContinuity`), placed
+    with the macOS Accessibility API.
+  - **Android** via borderless `scrcpy -s <serial>`, positioned with scrcpy
+    window flags.
+- 🎯 **Focus & video-wall layouts** — focus a single device full-stage, or tile
+  several into a wall and watch them at once.
+- 🤖 **AI automation presets** — name a plain-English goal and let an agent drive
+  the focused device toward it via `mirroir` (iOS) / `androir` (Android): it
+  reads the screen, decides, taps/swipes/types, and recovers from popups and ads.
+- 📜 **Live run log & Stop** — every preset run streams its progress into the app
+  in real time, with a visible Stop that ends the run immediately.
+- 🔒 **Local & credential-free** — PhoneHub talks only to the devices your Mac
+  already sees; it stores no account credentials and runs entirely on your host.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+## 📦 Install / Build
+
+### Requirements
+
+- **macOS 14+** with Swift / Xcode (or Command Line Tools) installed.
+- **Android:** `brew install android-platform-tools scrcpy` (for `adb` + mirror).
+- **iOS docking:** grant PhoneHub **Accessibility** in System Settings →
+  Privacy & Security → Accessibility (needed to position the iPhone Mirroring
+  window).
+- **Automation (optional):** [mirroir](https://github.com/jfarcand/mirroir-mcp)
+  (iOS) and/or [androir](https://github.com/benasbarciauskas/androir-mcp)
+  (Android) on the host, plus the `claude` CLI for the agent loop.
+
+### Build & run
 
 ```bash
 ./build-app.sh
 open PhoneHub.app
 ```
 
-Connect Android devices with USB debugging enabled and authorized. Connect iOS
+`build-app.sh` compiles the SwiftPM package in release, assembles `PhoneHub.app`,
+generates the app icon, and signs the bundle with a **stable self-signed
+identity** (`PhoneHub Self-Signed` in `phonehub-signing.keychain-db`). Stable
+signing matters: ad-hoc signing changes the code hash and would force you to
+re-grant Accessibility after every rebuild — the persistent identity keeps the
+grant alive.
+
+Connect Android devices with USB debugging enabled and authorized, and iOS
 devices supported by Apple's iPhone Mirroring. Select a device in the sidebar to
 launch and dock its native mirror window into the stage.
 
-## Responsible use
-
-Use PhoneHub on devices and accounts you are authorized to control, and follow
-the terms of the apps you automate.
-
-## Tests
+### Tests
 
 ```bash
 CLANG_MODULE_CACHE_PATH=$PWD/.build/cache/clang \
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 swift test --disable-sandbox
 ```
+
+CI runs `swift build` and the same `swift test` invocation on `macos-latest` for
+every push to `main` and every pull request.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+## 🤖 AI Presets
+
+A **preset** is a named, plain-English goal — for example, *"Open Settings, go to
+Wi-Fi, and tell me which network is connected."* Presets are stored in the app
+and run against the **focused** device.
+
+When you run a preset, PhoneHub spawns a headless `claude -p` agent wired to the
+right MCP server for the focused device's platform — `mirroir` for iOS, `androir`
+for Android. The agent then loops:
+
+1. **Read the screen** — describe the current UI (real element bounds / labels).
+2. **Decide** the next action toward the goal.
+3. **Act** — tap, swipe, type, or launch — and handle popups, ads, and dead ends.
+4. **Repeat** until the goal is met.
+
+The whole run streams into PhoneHub's **live log**, and a visible **Stop** ends
+it at any time.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+## 🗺️ Status & roadmap
+
+- [x] Multi-device discovery — iOS (iPhone Mirroring) **and** Android (`adb`)
+- [x] Native mirroring & docking — iPhone Mirroring (AX-positioned) and
+  borderless `scrcpy`
+- [x] Focus layout — single device full-stage
+- [x] Video-wall layout — tile several mirrors at once
+- [x] Mirror menu controls + resync loop (keep docked windows aligned as they move)
+- [x] AI automation presets — plain-English goal → agent loop via `mirroir` /
+  `androir`, with a live run log and Stop
+- [x] Stable self-signed build so the Accessibility grant survives rebuilds
+- [ ] Per-device preset history and saved transcripts
+- [ ] Scheduling / recurring presets
+- [ ] Richer wall layouts (custom grids, per-tile zoom)
+- [ ] Packaged, notarized `.app` release
+
+This README and roadmap fill in progressionally as the project grows.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
+## 📄 License
+
+[Apache-2.0](LICENSE).
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
