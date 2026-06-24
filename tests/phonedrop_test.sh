@@ -253,18 +253,35 @@ STUB_DIR=$(mktemp -d)
 ADB_LOG="${STUB_DIR}/adb.log"
 EXIFTOOL_LOG="${STUB_DIR}/exiftool.log"
 
-# Stub adb: log all calls, fake "connected" for connect, succeed for push/shell
+# Stub adb: log all calls and vary device state via env.
 cat > "${STUB_DIR}/adb" << STUBEOF
 #!/usr/bin/env bash
 echo "\$@" >> "${ADB_LOG}"
 if [[ "\${1:-}" == "connect" ]]; then
+  if [[ "\${STUB_ADB_CONNECT_FAIL:-0}" == "1" ]]; then
+    echo "failed to connect to \${2}"
+    exit 1
+  fi
   echo "connected to \${2}"
   exit 0
 fi
-if [[ "\${1:-}" == "push" ]]; then
+if [[ "\${1:-}" == "devices" ]]; then
+  echo "List of devices attached"
+  printf "%b" "\${STUB_ADB_DEVICES-test-phone:5555	device\\n}"
   exit 0
 fi
-if [[ "\${1:-}" == "shell" ]]; then
+if [[ "\${1:-}" == "-s" && "\${3:-}" == "get-state" ]]; then
+  if [[ "\${2:-}" == "test-phone:5555" ]]; then
+    echo "\${STUB_ADB_REMOTE_STATE:-device}"
+  else
+    echo "\${STUB_ADB_USB_STATE:-device}"
+  fi
+  exit 0
+fi
+if [[ "\${1:-}" == "-s" && "\${3:-}" == "push" ]]; then
+  exit 0
+fi
+if [[ "\${1:-}" == "-s" && "\${3:-}" == "shell" ]]; then
   exit 0
 fi
 exit 0
@@ -302,9 +319,9 @@ EXIFTOOL_BIN="${STUB_DIR}/exiftool"
 TAILSCALE_BIN="/usr/bin/true"
 CFGEOF
 
-# --- 5a: normal JPEG with a safe name ---
+# --- 5a: configured remote online ---
 echo ""
-echo "--- 5a: safe filename, original untouched ---"
+echo "--- 5a: remote online target selection ---"
 
 WORK_DIR=$(mktemp -d)
 ORIG_FILE="${WORK_DIR}/photo.jpg"
@@ -341,19 +358,20 @@ ORIG_MD5=$(md5 -q "${ORIG_FILE}" 2>/dev/null || md5sum "${ORIG_FILE}" | awk '{pr
 # Run phonedrop.sh push with stubs injected via env
 > "${ADB_LOG}"
 > "${EXIFTOOL_LOG}"
+STUB_ADB_REMOTE_STATE="device" \
+STUB_ADB_DEVICES=$'test-phone:5555\tdevice\nusb-one\tdevice\n' \
 PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
   bash "${PHONEDROP}" push "${ORIG_FILE}" 2>&1 | grep -v "^$" || true
 
-# Assert original is byte-identical (not mutated)
 AFTER_MD5=$(md5 -q "${ORIG_FILE}" 2>/dev/null || md5sum "${ORIG_FILE}" | awk '{print $1}')
 assert_eq "original file not modified by push" "${ORIG_MD5}" "${AFTER_MD5}"
 
-# Assert stub adb push was called with the safe filename
 ADB_LOG_CONTENT=$(cat "${ADB_LOG}" 2>/dev/null || true)
 assert_contains "adb push was called" "push" "${ADB_LOG_CONTENT}"
 assert_contains "adb push references photo.jpg" "photo.jpg" "${ADB_LOG_CONTENT}"
+assert_contains "remote online push uses -s host:port" "-s test-phone:5555 push" "${ADB_LOG_CONTENT}"
+assert_contains "remote online mkdir uses -s host:port" "-s test-phone:5555 shell mkdir" "${ADB_LOG_CONTENT}"
 
-# Assert stub exiftool was called (if real exiftool available)
 if [[ -x "${EXIFTOOL_BIN}" ]]; then
   EXIFTOOL_LOG_CONTENT=$(cat "${EXIFTOOL_LOG}" 2>/dev/null || true)
   assert_contains "exiftool was called on temp copy" "-all=" "${EXIFTOOL_LOG_CONTENT}"
@@ -361,9 +379,64 @@ fi
 
 rm -rf "${WORK_DIR}"
 
-# --- 5b: INJECTION REGRESSION — adversarial filename ---
+# --- 5b: configured remote offline, one USB device present ---
 echo ""
-echo "--- 5b: adversarial filename injection regression ---"
+echo "--- 5b: USB fallback target selection ---"
+
+WORK_DIR_USB=$(mktemp -d)
+USB_FILE="${WORK_DIR_USB}/usb.jpg"
+printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${USB_FILE}"
+
+> "${ADB_LOG}"
+STUB_ADB_CONNECT_FAIL="1" \
+STUB_ADB_REMOTE_STATE="offline" \
+STUB_ADB_DEVICES=$'usb-serial\tdevice\n' \
+PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+  bash "${PHONEDROP}" push "${USB_FILE}" 2>&1 | grep -v "^$" || true
+
+ADB_LOG_USB=$(cat "${ADB_LOG}" 2>/dev/null || true)
+assert_contains "USB fallback push uses -s usb serial" "-s usb-serial push" "${ADB_LOG_USB}"
+assert_contains "USB fallback shell uses -s usb serial" "-s usb-serial shell" "${ADB_LOG_USB}"
+assert_not_contains "USB fallback does not push to offline host" "-s test-phone:5555 push" "${ADB_LOG_USB}"
+
+rm -rf "${WORK_DIR_USB}"
+
+# --- 5c: no reachable devices ---
+echo ""
+echo "--- 5c: no reachable devices ---"
+
+WORK_DIR_NONE=$(mktemp -d)
+NO_DEVICE_FILE="${WORK_DIR_NONE}/none.jpg"
+printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${NO_DEVICE_FILE}"
+
+> "${ADB_LOG}"
+set +e
+NO_DEVICE_OUTPUT=$(
+  STUB_ADB_CONNECT_FAIL="1" \
+  STUB_ADB_REMOTE_STATE="offline" \
+  STUB_ADB_DEVICES="" \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" push "${NO_DEVICE_FILE}" 2>&1
+)
+NO_DEVICE_STATUS=$?
+set -e
+ADB_LOG_NONE=$(cat "${ADB_LOG}" 2>/dev/null || true)
+if [[ "${NO_DEVICE_STATUS}" -ne 0 ]]; then
+  echo "[PASS] no devices exits non-zero"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] no devices exits non-zero — command succeeded"
+  FAILURES+=("no devices exits non-zero")
+  FAIL=$((FAIL+1))
+fi
+assert_contains "no devices gives actionable message" "No reachable phone. Plug in USB, or bring the phone online on Tailscale; after a phone reboot, re-arm wireless adb with: phonedrop.sh rearm" "${NO_DEVICE_OUTPUT}"
+assert_not_contains "no devices does not push" " push " "${ADB_LOG_NONE}"
+
+rm -rf "${WORK_DIR_NONE}"
+
+# --- 5d: INJECTION REGRESSION — adversarial filename ---
+echo ""
+echo "--- 5d: adversarial filename injection regression ---"
 
 # This is the regression test for C1 (the original bug):
 # A file named with shell metacharacters must NOT execute arbitrary commands
@@ -380,26 +453,23 @@ INJECTED_SENTINEL="${WORK_DIR2}/INJECTED.jpg"
 assert_file_not_exists "sentinel INJECTED.jpg does not exist before test" "${INJECTED_SENTINEL}"
 
 > "${ADB_LOG}"
+STUB_ADB_REMOTE_STATE="device" \
+STUB_ADB_DEVICES=$'test-phone:5555\tdevice\n' \
 PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
   bash "${PHONEDROP}" push "${ADVERSARIAL_FILE}" 2>&1 | grep -v "^$" || true
 
-# 5b-i: INJECTED.jpg must not have been created (the ;touch part did not execute)
 assert_file_not_exists "injection did not execute (INJECTED.jpg not created)" "${INJECTED_SENTINEL}"
 
-# 5b-ii: The adb push log must NOT contain the literal semicolon-separated injection
-#         (proves the filename was sanitised before reaching adb shell)
 ADB_LOG_CONTENT2=$(cat "${ADB_LOG}" 2>/dev/null || true)
 assert_not_contains "adb log does not contain raw ';touch'" ";touch" "${ADB_LOG_CONTENT2}"
 
-# 5b-iii: The adb push must have received a sanitised (safe-charset) filename
-#          The raw 'a;touch INJECTED.jpg' → sanitised to 'a_touch_INJECTED.jpg'
 assert_contains "adb push received sanitised filename" "a_touch_INJECTED.jpg" "${ADB_LOG_CONTENT2}"
 
 rm -rf "${WORK_DIR2}"
 
-# --- 5c: file with spaces in path ---
+# --- 5e: file with spaces in path ---
 echo ""
-echo "--- 5c: file path with spaces ---"
+echo "--- 5e: file path with spaces ---"
 
 WORK_DIR3=$(mktemp -d)
 mkdir -p "${WORK_DIR3}/My Photos"
@@ -409,6 +479,8 @@ printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF
 ORIG_MD5_SPACE=$(md5 -q "${SPACE_FILE}" 2>/dev/null || md5sum "${SPACE_FILE}" | awk '{print $1}')
 
 > "${ADB_LOG}"
+STUB_ADB_REMOTE_STATE="device" \
+STUB_ADB_DEVICES=$'test-phone:5555\tdevice\n' \
 PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
   bash "${PHONEDROP}" push "${SPACE_FILE}" 2>&1 | grep -v "^$" || true
 
