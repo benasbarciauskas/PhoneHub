@@ -1,0 +1,137 @@
+import Foundation
+
+/// A digested event extracted from one line of `claude --output-format stream-json`.
+public enum StreamEvent: Equatable {
+    case system(subtype: String)        // init, hooks, etc.
+    case assistantText(String)          // model said something to the user
+    case toolUse(name: String, summary: String) // model invoked a phone-control tool
+    case toolResult(String)             // result of a tool call
+    case result(subtype: String, text: String?) // final result / error
+    case ignored                        // a line we don't surface
+}
+
+/// How a parsed event should appear in the live UI.
+public struct StreamUpdate: Equatable {
+    public var logLine: String?         // appended to the scrollable log
+    public var currentAction: String?   // replaces the one-line status
+    public var finished: Bool           // run ended (result event)
+    public var failed: Bool             // result event reported an error
+
+    public init(logLine: String? = nil,
+                currentAction: String? = nil,
+                finished: Bool = false,
+                failed: Bool = false) {
+        self.logLine = logLine
+        self.currentAction = currentAction
+        self.finished = finished
+        self.failed = failed
+    }
+}
+
+public enum StreamJSONParser {
+    /// Parse a single NDJSON line into a structured event.
+    public static func parseLine(_ line: String) -> StreamEvent {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else {
+            return .ignored
+        }
+
+        switch type {
+        case "system":
+            return .system(subtype: obj["subtype"] as? String ?? "")
+
+        case "assistant":
+            guard let message = obj["message"] as? [String: Any],
+                  let content = message["content"] as? [[String: Any]] else {
+                return .ignored
+            }
+            // A single assistant message may carry text and/or a tool_use.
+            for block in content {
+                let blockType = block["type"] as? String
+                if blockType == "tool_use" {
+                    let name = block["name"] as? String ?? "tool"
+                    let summary = summarize(input: block["input"])
+                    return .toolUse(name: shortToolName(name), summary: summary)
+                }
+            }
+            for block in content where block["type"] as? String == "text" {
+                if let text = block["text"] as? String,
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return .assistantText(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
+            return .ignored
+
+        case "user":
+            // tool_result blocks come back as user messages.
+            if let message = obj["message"] as? [String: Any],
+               let content = message["content"] as? [[String: Any]] {
+                for block in content where block["type"] as? String == "tool_result" {
+                    return .toolResult("tool result")
+                }
+            }
+            return .ignored
+
+        case "result":
+            let subtype = obj["subtype"] as? String ?? ""
+            let text = obj["result"] as? String
+            return .result(subtype: subtype, text: text)
+
+        default:
+            return .ignored
+        }
+    }
+
+    /// Map a parsed event to a UI update, or nil if it should be dropped.
+    public static func update(for event: StreamEvent) -> StreamUpdate? {
+        switch event {
+        case .system, .ignored, .toolResult:
+            return nil
+        case .assistantText(let text):
+            return StreamUpdate(logLine: text)
+        case .toolUse(let name, let summary):
+            let action = summary.isEmpty ? name : "\(name) \(summary)"
+            return StreamUpdate(logLine: "→ \(action)", currentAction: action)
+        case .result(let subtype, let text):
+            let failed = subtype != "success"
+            let line: String
+            if failed {
+                line = "Run ended: \(subtype)"
+            } else if let text, !text.isEmpty {
+                line = text
+            } else {
+                line = "Done."
+            }
+            return StreamUpdate(logLine: line,
+                                currentAction: failed ? "Failed" : "Finished",
+                                finished: true,
+                                failed: failed)
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Strip the `mcp__server__` prefix from a tool name for display.
+    static func shortToolName(_ name: String) -> String {
+        if let range = name.range(of: "__", options: .backwards) {
+            return String(name[range.upperBound...])
+        }
+        return name
+    }
+
+    /// One-line summary of a tool's input arguments.
+    static func summarize(input: Any?) -> String {
+        guard let dict = input as? [String: Any], !dict.isEmpty else { return "" }
+        let parts = dict.keys.sorted().prefix(3).compactMap { key -> String? in
+            let value = dict[key]
+            if let s = value as? String { return "\(key)=\(s.prefix(40))" }
+            if let n = value as? Int { return "\(key)=\(n)" }
+            if let d = value as? Double { return "\(key)=\(d)" }
+            return nil
+        }
+        return parts.joined(separator: " ")
+    }
+}
