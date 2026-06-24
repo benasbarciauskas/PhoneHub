@@ -76,13 +76,14 @@ sq_escape() {
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Safe macOS notification — values passed via osascript argv, not string interpolation.
+# Safe macOS notification — title and msg passed as osascript argv; quoted heredoc
+# means bash never interpolates user-influenced data into the AppleScript source.
 notify() {
   local title="${1:-PhoneDrop}"
   local msg="${2:-Done}"
-  osascript << OSASCRIPT 2>/dev/null || true
-on run
-  display notification "${msg}" with title "${title}"
+  osascript - "${title}" "${msg}" << 'OSASCRIPT' 2>/dev/null || true
+on run argv
+  display notification (item 2 of argv) with title (item 1 of argv)
 end run
 OSASCRIPT
 }
