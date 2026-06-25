@@ -155,12 +155,20 @@ cmd_rearm() {
   echo "phonedrop: enabling adb tcpip ${ADB_PORT} on ${usb_serial} ..."
   "${ADB_BIN}" -s "${usb_serial}" tcpip "${ADB_PORT}"
   echo "phonedrop: reconnecting to ${PHONE_HOST}:${ADB_PORT} ..."
-  local result
-  result=$("${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" 2>&1) || true
-  if echo "${result}" | grep -qiE "connected|already connected"; then
-    echo "phonedrop: reconnected: ${result}"
-  else
-    echo "phonedrop: wireless adb rearmed on USB device, but reconnect did not succeed yet: ${result}"
+  local result attempt
+  for attempt in 1 2 3 4 5 6; do
+    if [[ "${attempt}" -gt 1 ]]; then
+      sleep "${PHONEDROP_REARM_SLEEP:-2}"
+      echo "phonedrop: waiting for wireless adb to come up (attempt ${attempt}/6) ..."
+    fi
+    result=$("${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" 2>&1) || true
+    if echo "${result}" | grep -qiE "connected|already connected"; then
+      echo "phonedrop: reconnected: ${result}"
+      break
+    fi
+  done
+  if ! echo "${result}" | grep -qiE "connected|already connected"; then
+    echo "phonedrop: wireless adb rearm sent; connect did not succeed yet — try again in a moment"
   fi
 }
 cmd_config() {
