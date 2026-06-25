@@ -477,6 +477,64 @@ assert_eq "rearm retry exits zero" "0" "${REARM_STATUS}"
 assert_contains "rearm retry reports reconnect" "reconnected:" "${REARM_OUTPUT}"
 rm -f "${REARM_COUNTER}"
 
+echo ""
+echo "--- 5g: autoarm no USB exits zero without tcpip ---"
+
+> "${ADB_LOG}"
+set +e
+AUTOARM_NO_USB_OUTPUT=$(
+  STUB_ADB_REMOTE_STATE="offline" \
+  STUB_ADB_DEVICES="" \
+  PHONEDROP_REARM_SLEEP=0 \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" autoarm 2>&1
+)
+AUTOARM_NO_USB_STATUS=$?
+set -e
+ADB_LOG_AUTOARM_NO_USB=$(cat "${ADB_LOG}" 2>/dev/null || true)
+assert_eq "autoarm no USB exits zero" "0" "${AUTOARM_NO_USB_STATUS}"
+assert_contains "autoarm no USB logs skip" "no USB device; skip" "${AUTOARM_NO_USB_OUTPUT}"
+assert_not_contains "autoarm no USB does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_NO_USB}"
+
+echo ""
+echo "--- 5h: autoarm USB arms wireless adb ---"
+
+> "${ADB_LOG}"
+set +e
+AUTOARM_USB_OUTPUT=$(
+  STUB_ADB_REMOTE_STATE="offline" \
+  STUB_ADB_DEVICES=$'usb-auto\tdevice\n' \
+  PHONEDROP_REARM_SLEEP=0 \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" autoarm 2>&1
+)
+AUTOARM_USB_STATUS=$?
+set -e
+ADB_LOG_AUTOARM_USB=$(cat "${ADB_LOG}" 2>/dev/null || true)
+assert_eq "autoarm USB exits zero" "0" "${AUTOARM_USB_STATUS}"
+assert_contains "autoarm USB logs arming" "arming usb-auto" "${AUTOARM_USB_OUTPUT}"
+assert_contains "autoarm USB runs tcpip on USB serial" "-s usb-auto tcpip 5555" "${ADB_LOG_AUTOARM_USB}"
+assert_contains "autoarm USB connects to host" "connect test-phone:5555" "${ADB_LOG_AUTOARM_USB}"
+
+echo ""
+echo "--- 5i: autoarm already armed is idempotent ---"
+
+> "${ADB_LOG}"
+set +e
+AUTOARM_ARMED_OUTPUT=$(
+  STUB_ADB_REMOTE_STATE="device" \
+  STUB_ADB_DEVICES=$'usb-auto\tdevice\n' \
+  PHONEDROP_REARM_SLEEP=0 \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" autoarm 2>&1
+)
+AUTOARM_ARMED_STATUS=$?
+set -e
+ADB_LOG_AUTOARM_ARMED=$(cat "${ADB_LOG}" 2>/dev/null || true)
+assert_eq "autoarm already armed exits zero" "0" "${AUTOARM_ARMED_STATUS}"
+assert_empty "autoarm already armed is quiet" "${AUTOARM_ARMED_OUTPUT}"
+assert_not_contains "autoarm already armed does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_ARMED}"
+
 rm -rf "${STUB_DIR}" "${STUB_CFG_DIR}"
 
 # Summary
