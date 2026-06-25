@@ -181,11 +181,13 @@ Drag a photo onto the PhoneDrop Dock icon → strips EXIF/GPS metadata (on a cop
 
 - **Drop photos** onto the PhoneDrop Dock icon — they land in the Motorola's gallery.
 - Drops use wireless adb over Tailscale when available, and fall back to USB automatically when a cable is connected.
-- After a phone reboot, Android resets the wireless adb listener. Plug in via USB and run `scripts/phonedrop.sh rearm`.
+- After a phone reboot, Android resets the wireless adb listener. Plug in via USB and PhoneDrop auto-arm will re-enable wireless adb automatically; you can still run `scripts/phonedrop.sh rearm` manually.
+- Auto-arm is installed as a LaunchAgent by `scripts/phonedrop.sh install`, checks for a USB-connected phone every 30 seconds, and writes to `~/Library/Logs/phonedrop-autoarm.log`. Disable it with `scripts/phonedrop.sh autoarm-disable`.
 - **CLI:**
   ```bash
   scripts/phonedrop.sh connect      # Test the adb connection
   scripts/phonedrop.sh rearm        # Re-enable wireless adb after a phone reboot
+  scripts/phonedrop.sh autoarm-disable # Disable automatic wireless adb re-arm
   scripts/phonedrop.sh status       # Show config, tool paths, adb state
   scripts/phonedrop.sh config       # Print config path and values
   scripts/phonedrop.sh check        # Run smoke tests

@@ -4,6 +4,9 @@ CONFIG_DIR="${PHONEDROP_CONFIG_DIR:-${HOME}/.config/phonedrop}"
 CONFIG_FILE="${PHONEDROP_CONFIG_FILE:-${CONFIG_DIR}/config}"
 SUPPORT_DIR="${HOME}/Library/Application Support/PhoneDrop"
 APP_DEST="${HOME}/Applications/PhoneDrop.app"
+AUTOARM_LABEL="com.phonedrop.autoarm"
+AUTOARM_PLIST="${HOME}/Library/LaunchAgents/${AUTOARM_LABEL}.plist"
+AUTOARM_LOG="${HOME}/Library/Logs/phonedrop-autoarm.log"
 load_config() {
   if [[ -f "${CONFIG_FILE}" ]]; then
     source "${CONFIG_FILE}"
@@ -46,63 +49,83 @@ on run argv
 end run
 OSASCRIPT
 }
-
 die() {
   local msg="$*"
   echo "phonedrop: error: ${msg}" >&2
   notify "PhoneDrop Error" "${msg}"
   exit 1
 }
-
 require_config() {
   load_config
   [[ -f "${CONFIG_FILE}" ]] || die "Config not found. Run: phonedrop.sh install"
   [[ -n "${PHONE_HOST}" ]] || die "PHONE_HOST not set in ${CONFIG_FILE}. Edit it and set PHONE_HOST."
 }
-
 require_tool() {
   local bin="$1"
   local name="$2"
   [[ -x "${bin}" ]] || die "${name} not found at ${bin}. Run: phonedrop.sh install"
 }
-
 adb_device_serials() {
   "${ADB_BIN}" devices 2>/dev/null | awk 'NR > 1 && $2 == "device" {print $1}'
 }
-
-select_adb_target() {
-  local remote="${PHONE_HOST}:${ADB_PORT}"
-  if [[ -n "${PHONE_HOST}" ]]; then
-    local state
-    state=$("${ADB_BIN}" -s "${remote}" get-state 2>/dev/null || true)
-    if [[ "${state}" == "device" ]]; then
-      printf '%s\n' "${remote}"
-      return 0
-    fi
-  fi
-
-  local serial first="" count=0 remote_seen=0
+usb_adb_serials() {
+  adb_device_serials | awk '$0 !~ /:/'
+}
+single_usb_device() {
+  local serial first="" count=0
   while IFS= read -r serial; do
     [[ -n "${serial}" ]] || continue
-    count=$((count+1))
-    [[ -z "${first}" ]] && first="${serial}"
-    [[ "${serial}" == "${remote}" ]] && remote_seen=1
-  done < <(adb_device_serials)
-
-  [[ "${count}" -gt 0 ]] || return 1
-  if [[ "${count}" -eq 1 ]]; then
-    printf '%s\n' "${first}"
-  elif [[ "${remote_seen}" -eq 1 ]]; then
-    printf '%s\n' "${remote}"
-  else
-    printf '%s\n' "${first}"
+    count=$((count+1)); [[ -z "${first}" ]] && first="${serial}"
+  done < <(usb_adb_serials)
+  [[ "${count}" -eq 1 ]] && { printf '%s\n' "${first}"; return 0; }
+  [[ "${count}" -eq 0 ]] && return 1
+  return 2
+}
+select_adb_target() {
+  local remote="${PHONE_HOST}:${ADB_PORT}" state serials first count
+  if [[ -n "${PHONE_HOST}" ]]; then
+    state=$("${ADB_BIN}" -s "${remote}" get-state 2>/dev/null || true)
+    [[ "${state}" == "device" ]] && { printf '%s\n' "${remote}"; return 0; }
   fi
+  serials=$(adb_device_serials)
+  first=$(printf '%s\n' "${serials}" | awk 'NF {print; exit}')
+  count=$(printf '%s\n' "${serials}" | awk 'NF {c++} END {print c+0}')
+  [[ "${count}" -gt 0 ]] || return 1
+  [[ "${count}" -eq 1 ]] && { printf '%s\n' "${first}"; return 0; }
+  printf '%s\n' "${serials}" | grep -Fxq "${remote}" && { printf '%s\n' "${remote}"; return 0; }
+  printf '%s\n' "${first}"
+}
+arm_wireless() {
+  local quiet="${1:-0}" usb_serial result="" attempt
+  usb_serial=$(single_usb_device) || return $?
+  [[ "${quiet}" == "1" ]] || echo "phonedrop: enabling adb tcpip ${ADB_PORT} on ${usb_serial} ..."
+  if [[ "${quiet}" == "1" ]]; then
+    "${ADB_BIN}" -s "${usb_serial}" tcpip "${ADB_PORT}" >/dev/null 2>&1 || true
+  else
+    "${ADB_BIN}" -s "${usb_serial}" tcpip "${ADB_PORT}"
+    echo "phonedrop: reconnecting to ${PHONE_HOST}:${ADB_PORT} ..."
+  fi
+  for attempt in 1 2 3 4 5 6; do
+    if [[ "${attempt}" -gt 1 ]]; then
+      sleep "${PHONEDROP_REARM_SLEEP:-2}"
+      [[ "${quiet}" == "1" ]] || echo "phonedrop: waiting for wireless adb to come up (attempt ${attempt}/6) ..."
+    fi
+    result=$("${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" 2>&1) || true
+    if echo "${result}" | grep -qiE "connected|already connected"; then
+      [[ "${quiet}" == "1" ]] || echo "phonedrop: reconnected: ${result}"
+      return 0
+    fi
+  done
+  [[ "${quiet}" == "1" ]] || echo "phonedrop: wireless adb rearm sent; connect did not succeed yet — try again in a moment"
+  return 1
+}
+autoarm_log() {
+  echo "phonedrop autoarm $(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
 }
 cmd_connect() {
   load_config
   [[ -n "${PHONE_HOST}" ]] || die "PHONE_HOST not set in config. Edit ${CONFIG_FILE}."
   require_tool "${ADB_BIN}" "adb"
-
   echo "phonedrop: connecting to ${PHONE_HOST}:${ADB_PORT} ..."
   local result
   result=$("${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" 2>&1) || true
@@ -123,6 +146,7 @@ cmd_status() {
   echo "ADB_BIN:      ${ADB_BIN} $([ -x "${ADB_BIN}" ] && echo "(ok)" || echo "(NOT FOUND)")"
   echo "EXIFTOOL_BIN: ${EXIFTOOL_BIN} $([ -x "${EXIFTOOL_BIN}" ] && echo "(ok)" || echo "(NOT FOUND)")"
   echo "TAILSCALE_BIN:${TAILSCALE_BIN} $([ -x "${TAILSCALE_BIN}" ] && echo "(ok)" || echo "(NOT FOUND)")"
+  launchctl list 2>/dev/null | grep -q "${AUTOARM_LABEL}" && echo "Auto-arm:     loaded" || echo "Auto-arm:     not loaded"
   echo ""
   if [[ -x "${ADB_BIN}" ]]; then
     echo "=== adb devices ==="
@@ -140,36 +164,36 @@ cmd_status() {
 cmd_rearm() {
   require_config
   require_tool "${ADB_BIN}" "adb"
-
-  local serial usb_serial="" count=0
-  while IFS= read -r serial; do
-    [[ -n "${serial}" ]] || continue
-    [[ "${serial}" == *:* ]] && continue
-    count=$((count+1))
-    [[ -z "${usb_serial}" ]] && usb_serial="${serial}"
-  done < <(adb_device_serials)
-
+  local count
+  count=$(usb_adb_serials | awk 'NF {c++} END {print c+0}')
   [[ "${count}" -gt 0 ]] || die "No USB device found. Plug in USB cable first."
   [[ "${count}" -eq 1 ]] || die "Multiple USB devices found. Plug in one phone, then run: phonedrop.sh rearm"
-
-  echo "phonedrop: enabling adb tcpip ${ADB_PORT} on ${usb_serial} ..."
-  "${ADB_BIN}" -s "${usb_serial}" tcpip "${ADB_PORT}"
-  echo "phonedrop: reconnecting to ${PHONE_HOST}:${ADB_PORT} ..."
-  local result attempt
-  for attempt in 1 2 3 4 5 6; do
-    if [[ "${attempt}" -gt 1 ]]; then
-      sleep "${PHONEDROP_REARM_SLEEP:-2}"
-      echo "phonedrop: waiting for wireless adb to come up (attempt ${attempt}/6) ..."
-    fi
-    result=$("${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" 2>&1) || true
-    if echo "${result}" | grep -qiE "connected|already connected"; then
-      echo "phonedrop: reconnected: ${result}"
-      break
-    fi
-  done
-  if ! echo "${result}" | grep -qiE "connected|already connected"; then
-    echo "phonedrop: wireless adb rearm sent; connect did not succeed yet — try again in a moment"
+  arm_wireless 0 || true
+}
+cmd_autoarm() {
+  load_config
+  [[ -n "${PHONE_HOST}" ]] || exit 0
+  [[ -x "${ADB_BIN}" ]] || { autoarm_log "adb not executable at ${ADB_BIN}"; exit 0; }
+  [[ "$("${ADB_BIN}" -s "${PHONE_HOST}:${ADB_PORT}" get-state 2>/dev/null || true)" == "device" ]] && exit 0
+  local usb_serial
+  if usb_serial=$(single_usb_device); then
+    autoarm_log "arming ${usb_serial} for ${PHONE_HOST}:${ADB_PORT}"
+    arm_wireless 1 >/dev/null 2>&1 || true
+  else
+    case "$?" in 1) autoarm_log "no USB device; skip" ;; *) autoarm_log "multiple USB devices; skip" ;; esac
   fi
+  exit 0
+}
+write_autoarm_plist() {
+  mkdir -p "$(dirname "${AUTOARM_PLIST}")" "$(dirname "${AUTOARM_LOG}")"
+  cat > "${AUTOARM_PLIST}" << EOF
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>${AUTOARM_LABEL}</string><key>ProgramArguments</key><array><string>/bin/bash</string><string>${SUPPORT_DIR}/phonedrop.sh</string><string>autoarm</string></array><key>StartInterval</key><integer>30</integer><key>RunAtLoad</key><true/><key>StandardOutPath</key><string>${AUTOARM_LOG}</string><key>StandardErrorPath</key><string>${AUTOARM_LOG}</string></dict></plist>
+EOF
+}
+cmd_autoarm_disable() {
+  launchctl bootout "gui/$(id -u)/${AUTOARM_LABEL}" 2>/dev/null || true
+  rm -f "${AUTOARM_PLIST}"
+  echo "phonedrop: auto-arm disabled"
 }
 cmd_config() {
   echo "Config path: ${CONFIG_FILE}"
@@ -222,6 +246,10 @@ EOF
   cp "${self}" "${SUPPORT_DIR}/phonedrop.sh"
   chmod +x "${SUPPORT_DIR}/phonedrop.sh"
   echo "phonedrop: logic script installed to ${SUPPORT_DIR}/phonedrop.sh"
+  write_autoarm_plist
+  launchctl bootout "gui/$(id -u)/${AUTOARM_LABEL}" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "${AUTOARM_PLIST}" || echo "phonedrop: warning: could not load auto-arm agent now; re-run install or: phonedrop.sh install to retry"
+  echo "phonedrop: auto-arm agent installed and active"
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local droplet_src="${script_dir}/phonedrop-droplet.applescript"
@@ -232,12 +260,11 @@ EOF
   osacompile -o "${APP_DEST}" "${droplet_src}"
   echo "phonedrop: droplet compiled → ${APP_DEST}"
   echo ""
-  echo "Done! Drag ${APP_DEST} to your Dock, then drop photos onto it."
+  echo "Done! Auto-arm is active. Drag ${APP_DEST} to your Dock, then drop photos onto it."
 }
 cmd_check() {
   load_config
   local errors=0
-
   echo "=== PhoneDrop smoke test ==="
   if [[ -f "${CONFIG_FILE}" ]]; then
     echo "[ok] config: ${CONFIG_FILE}"
@@ -281,7 +308,6 @@ write_png(sys.argv[1])
 PYEOF
     sips -s format jpeg "${tmp_png}" --out "${orig}" >/dev/null 2>&1 || true
   fi
-
   if [[ ! -f "${orig}" ]]; then
     echo "[SKIP] could not create test JPEG (sips unavailable)"
   elif [[ ! -x "${EXIFTOOL_BIN}" ]]; then
@@ -292,14 +318,11 @@ PYEOF
       -GPSLatitude=51.5 -GPSLongitude=-0.1 \
       -GPSLatitudeRef=N -GPSLongitudeRef=W \
       "${orig}" >/dev/null 2>&1
-
     local gps_before
     gps_before=$("${EXIFTOOL_BIN}" -GPSLatitude "${orig}" 2>/dev/null || true)
     [[ -z "${gps_before}" ]] && echo "[WARN] GPS injection may have failed"
-
     cp "${orig}" "${stripped}"
     "${EXIFTOOL_BIN}" -overwrite_original -all= "${stripped}" >/dev/null 2>&1
-
     local gps_after
     gps_after=$("${EXIFTOOL_BIN}" -GPS:all "${stripped}" 2>/dev/null || true)
     if [[ -z "${gps_after}" ]]; then
@@ -336,7 +359,6 @@ PYEOF
   else
     echo "[skip] adb connect: PHONE_HOST not configured"
   fi
-
   echo ""
   if [[ "${errors}" -eq 0 ]]; then
     echo "=== All checks passed ==="
@@ -352,31 +374,25 @@ cmd_push() {
     echo "Usage: phonedrop.sh push <file> [file ...]" >&2
     exit 1
   fi
-
   require_config
   validate_dest
   require_tool "${ADB_BIN}" "adb"
   require_tool "${EXIFTOOL_BIN}" "exiftool"
-
   "${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" >/dev/null 2>&1 || true
-
   local adb_target
   adb_target=$(select_adb_target) || die "No reachable phone. Plug in USB, or bring the phone online on Tailscale; after a phone reboot, re-arm wireless adb with: phonedrop.sh rearm"
   local dest_safe
   dest_safe="$(sq_escape "${DEST}")"
   "${ADB_BIN}" -s "${adb_target}" shell "mkdir -p '${dest_safe}'" 2>/dev/null || true
-
   local tmp_dir
   tmp_dir=$(mktemp -d)
   trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' EXIT
-
   local pushed=0
   local failed=0
   local last_error=""
   local image_exts="jpg jpeg png tif tiff heic heif webp bmp gif"
   local seen_dir
   seen_dir=$(mktemp -d)
-
   for src in "$@"; do
     if [[ ! -f "${src}" ]]; then
       echo "phonedrop: skipping (not a file): ${src}" >&2
@@ -408,7 +424,6 @@ cmd_push() {
     else
       printf '0' > "${seen_file}"
     fi
-
     local tmp_copy="${tmp_dir}/${safe_basename}"
     cp -- "${src}" "${tmp_copy}"
     local ext="${safe_basename##*.}"
@@ -449,9 +464,10 @@ cmd_push() {
 }
 VERB="${1:-}"
 shift || true
-
 case "${VERB}" in
   push)    load_config; cmd_push "$@" ;;
+  autoarm) cmd_autoarm "$@" ;;
+  autoarm-disable) cmd_autoarm_disable "$@" ;;
   connect) cmd_connect "$@" ;;
   rearm)   cmd_rearm "$@" ;;
   status)  cmd_status "$@" ;;
@@ -459,9 +475,11 @@ case "${VERB}" in
   config)  cmd_config "$@" ;;
   check)   cmd_check "$@" ;;
   *)
-    echo "Usage: phonedrop.sh <push|connect|rearm|status|install|config|check> [args...]" >&2
+    echo "Usage: phonedrop.sh <push|autoarm|autoarm-disable|connect|rearm|status|install|config|check> [args...]" >&2
     echo ""
     echo "  push <files...>  Strip EXIF/GPS and push files to phone gallery"
+    echo "  autoarm          LaunchAgent-safe wireless adb auto-arm check"
+    echo "  autoarm-disable  Disable and remove the auto-arm LaunchAgent"
     echo "  connect          Connect to phone via adb over Tailscale"
     echo "  rearm            Re-enable wireless adb over USB after a phone reboot"
     echo "  status           Show config, tool paths, and adb connection state"
