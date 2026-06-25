@@ -378,6 +378,8 @@ cmd_push() {
   validate_dest
   require_tool "${ADB_BIN}" "adb"
   require_tool "${EXIFTOOL_BIN}" "exiftool"
+  # ponytail: 1-second timestamp; two separate drops of an identically-named file within the SAME second could still collide — acceptable for manual drag-drop. Add PID/nonce if it ever matters.
+  local stamp="${PHONEDROP_STAMP:-$(date +%Y%m%d_%H%M%S)}"
   "${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" >/dev/null 2>&1 || true
   local adb_target
   adb_target=$(select_adb_target) || die "No reachable phone. Plug in USB, or bring the phone online on Tailscale; after a phone reboot, re-arm wireless adb with: phonedrop.sh rearm"
@@ -440,7 +442,7 @@ cmd_push() {
         echo "phonedrop: warning: exiftool strip failed for ${safe_basename}, pushing anyway" >&2
       }
     fi
-    local phone_path="${DEST}${safe_basename}"
+    local phone_path="${DEST}${stamp}_${safe_basename}"
     if "${ADB_BIN}" -s "${adb_target}" push "${tmp_copy}" "${phone_path}" >/dev/null 2>&1; then
       local phone_path_safe
       phone_path_safe="$(sq_escape "${phone_path}")"

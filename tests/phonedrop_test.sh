@@ -24,6 +24,20 @@ assert_eq() {
   fi
 }
 
+assert_not_eq() {
+  local desc="$1" unexpected="$2" actual="$3"
+  if [[ "${unexpected}" != "${actual}" ]]; then
+    echo "[PASS] ${desc}"
+    PASS=$((PASS+1))
+  else
+    echo "[FAIL] ${desc}"
+    echo "       unexpected: $(printf '%q' "${unexpected}")"
+    echo "       actual:     $(printf '%q' "${actual}")"
+    FAILURES+=("${desc}")
+    FAIL=$((FAIL+1))
+  fi
+}
+
 assert_empty() {
   local desc="$1" val="$2"
   if [[ -z "${val}" ]]; then
@@ -458,7 +472,43 @@ assert_contains "adb push called for space-named file" "vacation_photo.jpg" "${A
 rm -rf "${WORK_DIR3}"
 
 echo ""
-echo "--- 5f: rearm retries connect ---"
+echo "--- 5f: repeated basename across drops gets unique phone destinations ---"
+
+WORK_DIR4=$(mktemp -d)
+mkdir -p "${WORK_DIR4}/first" "${WORK_DIR4}/second"
+FIRST_REPEAT_FILE="${WORK_DIR4}/first/photo.jpg"
+SECOND_REPEAT_FILE="${WORK_DIR4}/second/photo.jpg"
+printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${FIRST_REPEAT_FILE}"
+printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${SECOND_REPEAT_FILE}"
+
+> "${ADB_LOG}"
+STUB_ADB_REMOTE_STATE="device" \
+STUB_ADB_DEVICES=$'test-phone:5555\tdevice\n' \
+PHONEDROP_STAMP="20260101_000000" \
+PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+  bash "${PHONEDROP}" push "${FIRST_REPEAT_FILE}" 2>&1 | grep -v "^$" || true
+
+STUB_ADB_REMOTE_STATE="device" \
+STUB_ADB_DEVICES=$'test-phone:5555\tdevice\n' \
+PHONEDROP_STAMP="20260101_000001" \
+PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+  bash "${PHONEDROP}" push "${SECOND_REPEAT_FILE}" 2>&1 | grep -v "^$" || true
+
+REPEAT_DESTS=()
+while IFS= read -r dest; do
+  REPEAT_DESTS+=("${dest}")
+done < <(awk '$1 == "-s" && $3 == "push" {print $5}' "${ADB_LOG}")
+assert_eq "two repeated-name pushes recorded" "2" "${#REPEAT_DESTS[@]}"
+if [[ "${#REPEAT_DESTS[@]}" -eq 2 ]]; then
+  assert_eq "first repeated-name destination is stamped" "/sdcard/DCIM/PhoneDrop/20260101_000000_photo.jpg" "${REPEAT_DESTS[0]}"
+  assert_eq "second repeated-name destination is stamped" "/sdcard/DCIM/PhoneDrop/20260101_000001_photo.jpg" "${REPEAT_DESTS[1]}"
+  assert_not_eq "separate drops do not reuse phone destination" "${REPEAT_DESTS[0]}" "${REPEAT_DESTS[1]}"
+fi
+
+rm -rf "${WORK_DIR4}"
+
+echo ""
+echo "--- 5g: rearm retries connect ---"
 
 REARM_COUNTER=$(mktemp "${TMPDIR:-/tmp}/phonedrop-rearm-connect.XXXXXX")
 printf '0\n' > "${REARM_COUNTER}"
@@ -478,7 +528,7 @@ assert_contains "rearm retry reports reconnect" "reconnected:" "${REARM_OUTPUT}"
 rm -f "${REARM_COUNTER}"
 
 echo ""
-echo "--- 5g: autoarm no USB exits zero without tcpip ---"
+echo "--- 5h: autoarm no USB exits zero without tcpip ---"
 
 > "${ADB_LOG}"
 set +e
@@ -497,7 +547,7 @@ assert_contains "autoarm no USB logs skip" "no USB device; skip" "${AUTOARM_NO_U
 assert_not_contains "autoarm no USB does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_NO_USB}"
 
 echo ""
-echo "--- 5h: autoarm USB arms wireless adb ---"
+echo "--- 5i: autoarm USB arms wireless adb ---"
 
 > "${ADB_LOG}"
 set +e
@@ -517,7 +567,7 @@ assert_contains "autoarm USB runs tcpip on USB serial" "-s usb-auto tcpip 5555" 
 assert_contains "autoarm USB connects to host" "connect test-phone:5555" "${ADB_LOG_AUTOARM_USB}"
 
 echo ""
-echo "--- 5i: autoarm already armed is idempotent ---"
+echo "--- 5j: autoarm already armed is idempotent ---"
 
 > "${ADB_LOG}"
 set +e
@@ -536,7 +586,7 @@ assert_empty "autoarm already armed is quiet" "${AUTOARM_ARMED_OUTPUT}"
 assert_not_contains "autoarm already armed does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_ARMED}"
 
 echo ""
-echo "--- 5j: autoarm multiple USB devices skips ---"
+echo "--- 5k: autoarm multiple USB devices skips ---"
 
 > "${ADB_LOG}"
 set +e
