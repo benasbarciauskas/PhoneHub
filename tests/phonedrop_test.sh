@@ -393,6 +393,20 @@ echo "--- 5c: no reachable devices ---"
 WORK_DIR_NONE=$(mktemp -d)
 NO_DEVICE_FILE="${WORK_DIR_NONE}/none.jpg"
 printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${NO_DEVICE_FILE}"
+OSA_LOG="${WORK_DIR_NONE}/osascript.log"
+OSA_RECORDER="${WORK_DIR_NONE}/osascript-recorder"
+cat > "${OSA_RECORDER}" << STUBEOF
+#!/usr/bin/env bash
+{
+  printf 'ARGS:'
+  printf ' [%s]' "\$@"
+  printf '\\nSCRIPT:\\n'
+  cat
+  printf '\\n'
+} >> "${OSA_LOG}"
+exit 0
+STUBEOF
+chmod +x "${OSA_RECORDER}"
 
 > "${ADB_LOG}"
 set +e
@@ -400,6 +414,7 @@ NO_DEVICE_OUTPUT=$(
   STUB_ADB_CONNECT_FAIL="1" \
   STUB_ADB_REMOTE_STATE="offline" \
   STUB_ADB_DEVICES="" \
+  OSASCRIPT_BIN="${OSA_RECORDER}" \
   PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
     bash "${PHONEDROP}" push "${NO_DEVICE_FILE}" 2>&1
 )
@@ -414,7 +429,10 @@ else
   FAILURES+=("no devices exits non-zero")
   FAIL=$((FAIL+1))
 fi
-assert_contains "no devices gives actionable message" "No reachable phone. Plug in USB, or bring the phone online on Tailscale; after a phone reboot, re-arm wireless adb with: phonedrop.sh rearm" "${NO_DEVICE_OUTPUT}"
+OSA_LOG_NONE=$(cat "${OSA_LOG}" 2>/dev/null || true)
+assert_contains "no devices opens error dialog" "display dialog" "${OSA_LOG_NONE}"
+assert_contains "no devices dialog says could not send" "couldn't send" "${OSA_LOG_NONE}"
+assert_contains "no devices gives actionable message" "PhoneDrop couldn't send" "${NO_DEVICE_OUTPUT}"
 assert_not_contains "no devices does not push" " push " "${ADB_LOG_NONE}"
 
 rm -rf "${WORK_DIR_NONE}"

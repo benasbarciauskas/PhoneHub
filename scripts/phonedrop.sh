@@ -16,6 +16,7 @@ PHONE_HOST="${PHONE_HOST:-}"
 ADB_PORT="${ADB_PORT:-5555}"
 DEST="${DEST:-/sdcard/DCIM/PhoneDrop/}"
 ADB_BIN="${ADB_BIN:-/opt/homebrew/bin/adb}"
+OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 EXIFTOOL_BIN="${EXIFTOOL_BIN:-/opt/homebrew/bin/exiftool}"
 TAILSCALE_BIN="${TAILSCALE_BIN:-/usr/local/bin/tailscale}"
 validate_dest() {
@@ -40,19 +41,28 @@ sq_escape() {
   local s="$1"
   printf '%s' "${s}" | sed "s/'/'\\\\''/g"
 }
+osa_argv() {
+  local script="$1"; shift
+  "${OSASCRIPT_BIN}" - "$@" <<OSA 2>/dev/null || true
+$script
+OSA
+}
 notify() {
-  local title="${1:-PhoneDrop}"
-  local msg="${2:-Done}"
-  osascript - "${title}" "${msg}" << 'OSASCRIPT' 2>/dev/null || true
-on run argv
+  local title="$1" msg="$2"
+  osa_argv 'on run argv
   display notification (item 2 of argv) with title (item 1 of argv)
-end run
-OSASCRIPT
+end run' "$title" "$msg"
+}
+notify_error() {
+  local title="$1" msg="$2"
+  osa_argv 'on run argv
+  display dialog (item 2 of argv) with title (item 1 of argv) buttons {"OK"} default button "OK" with icon stop
+end run' "$title" "$msg"
 }
 die() {
   local msg="$*"
   echo "phonedrop: error: ${msg}" >&2
-  notify "PhoneDrop Error" "${msg}"
+  notify_error "PhoneDrop Error" "${msg}"
   exit 1
 }
 require_config() {
@@ -378,21 +388,17 @@ cmd_push() {
   validate_dest
   require_tool "${ADB_BIN}" "adb"
   require_tool "${EXIFTOOL_BIN}" "exiftool"
-  # ponytail: 1-second timestamp; two separate drops of an identically-named file within the SAME second could still collide — acceptable for manual drag-drop. Add PID/nonce if it ever matters.
   local stamp="${PHONEDROP_STAMP:-$(date +%Y%m%d_%H%M%S)}"
   "${ADB_BIN}" connect "${PHONE_HOST}:${ADB_PORT}" >/dev/null 2>&1 || true
   local adb_target
-  adb_target=$(select_adb_target) || die "No reachable phone. Plug in USB, or bring the phone online on Tailscale; after a phone reboot, re-arm wireless adb with: phonedrop.sh rearm"
+  adb_target=$(select_adb_target) || die "PhoneDrop couldn't send — your phone isn't reachable (off, asleep, or wireless adb not armed after a reboot). Plug it into USB to re-arm, or check it's connected on Tailscale."
   local dest_safe
   dest_safe="$(sq_escape "${DEST}")"
   "${ADB_BIN}" -s "${adb_target}" shell "mkdir -p '${dest_safe}'" 2>/dev/null || true
   local tmp_dir
   tmp_dir=$(mktemp -d)
   trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' EXIT
-  local pushed=0
-  local failed=0
-  local last_error=""
-  local image_exts="jpg jpeg png tif tiff heic heif webp bmp gif"
+  local pushed=0 failed=0 last_error="" image_exts="jpg jpeg png tif tiff heic heif webp bmp gif"
   local seen_dir
   seen_dir=$(mktemp -d)
   for src in "$@"; do
