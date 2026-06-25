@@ -248,7 +248,7 @@ EOF
   echo "phonedrop: logic script installed to ${SUPPORT_DIR}/phonedrop.sh"
   write_autoarm_plist
   launchctl bootout "gui/$(id -u)/${AUTOARM_LABEL}" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "${AUTOARM_PLIST}"
+  launchctl bootstrap "gui/$(id -u)" "${AUTOARM_PLIST}" || echo "phonedrop: warning: could not load auto-arm agent now; re-run install or: phonedrop.sh install to retry"
   echo "phonedrop: auto-arm agent installed and active"
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -535,6 +535,25 @@ assert_eq "autoarm already armed exits zero" "0" "${AUTOARM_ARMED_STATUS}"
 assert_empty "autoarm already armed is quiet" "${AUTOARM_ARMED_OUTPUT}"
 assert_not_contains "autoarm already armed does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_ARMED}"
 
+echo ""
+echo "--- 5j: autoarm multiple USB devices skips ---"
+
+> "${ADB_LOG}"
+set +e
+AUTOARM_MULTI_USB_OUTPUT=$(
+  STUB_ADB_REMOTE_STATE="offline" \
+  STUB_ADB_DEVICES=$'usb-a\tdevice\nusb-b\tdevice\n' \
+  PHONEDROP_REARM_SLEEP=0 \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" autoarm 2>&1
+)
+AUTOARM_MULTI_USB_STATUS=$?
+set -e
+ADB_LOG_AUTOARM_MULTI_USB=$(cat "${ADB_LOG}" 2>/dev/null || true)
+assert_eq "autoarm multiple USB exits zero" "0" "${AUTOARM_MULTI_USB_STATUS}"
+assert_contains "autoarm multiple USB logs skip" "multiple USB" "${AUTOARM_MULTI_USB_OUTPUT}"
+assert_not_contains "autoarm multiple USB does not run tcpip" "tcpip" "${ADB_LOG_AUTOARM_MULTI_USB}"
+
 rm -rf "${STUB_DIR}" "${STUB_CFG_DIR}"
 
 # Summary
