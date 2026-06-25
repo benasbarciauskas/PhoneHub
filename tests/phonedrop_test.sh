@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# tests/phonedrop_test.sh
-# Pure-logic tests for phonedrop.sh — runs WITHOUT a phone attached.
-#
-# Tests:
-#   1. Syntax check
-#   2. Script executable
-#   3. Config parse
-#   4. Genuine exiftool EXIF/GPS strip assertion (tool-level, verifies strip works)
-#   5. cmd_push via stubs: original file untouched (byte-identical before/after),
-#      stub adb received sanitised filename as a single literal (injection regression),
-#      adversarial filename (a;touch INJECTED.jpg) does NOT execute arbitrary commands,
-#      stub exiftool was called on the temp copy (not the original).
-#
-# Exit 0 = all pass. Exit 1 = any failure.
 set -euo pipefail
 
 PASS=0
@@ -23,9 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PHONEDROP="${SCRIPT_DIR}/../scripts/phonedrop.sh"
 EXIFTOOL_BIN="${EXIFTOOL_BIN:-/opt/homebrew/bin/exiftool}"
 
-# ---------------------------------------------------------------------------
 # Assert helpers
-# ---------------------------------------------------------------------------
 assert_eq() {
   local desc="$1" expected="$2" actual="$3"
   if [[ "${expected}" == "${actual}" ]]; then
@@ -124,9 +108,7 @@ assert_not_contains() {
   fi
 }
 
-# ---------------------------------------------------------------------------
 # Test 1: Syntax check
-# ---------------------------------------------------------------------------
 echo "=== Test 1: syntax check ==="
 if bash -n "${PHONEDROP}" 2>/dev/null; then
   echo "[PASS] phonedrop.sh passes bash -n"
@@ -137,9 +119,7 @@ else
   FAIL=$((FAIL+1))
 fi
 
-# ---------------------------------------------------------------------------
 # Test 2: Script executable
-# ---------------------------------------------------------------------------
 echo ""
 echo "=== Test 2: script executable ==="
 if [[ -x "${PHONEDROP}" ]]; then
@@ -151,9 +131,7 @@ else
   FAIL=$((FAIL+1))
 fi
 
-# ---------------------------------------------------------------------------
 # Test 3: Config parse
-# ---------------------------------------------------------------------------
 echo ""
 echo "=== Test 3: config parse ==="
 TMP_CFG_DIR=$(mktemp -d)
@@ -175,9 +153,7 @@ assert_eq "ADB_BIN parsed"     "/opt/homebrew/bin/adb"   "${ADB_BIN}"
 rm -rf "${TMP_CFG_DIR}"
 unset PHONE_HOST ADB_PORT DEST ADB_BIN TAILSCALE_BIN 2>/dev/null || true
 
-# ---------------------------------------------------------------------------
 # Test 4: Genuine exiftool EXIF/GPS strip (tool-level assertion)
-# ---------------------------------------------------------------------------
 echo ""
 echo "=== Test 4: exiftool EXIF/GPS strip assertion ==="
 
@@ -189,7 +165,6 @@ else
   TEST_ORIG="${TMP_EXIF_DIR}/orig.jpg"
   TEST_STRIPPED="${TMP_EXIF_DIR}/stripped.jpg"
 
-  # Create 1x1 JPEG
   CREATED=0
   if command -v sips >/dev/null 2>&1; then
     TMP_PNG="${TMP_EXIF_DIR}/pixel.png"
@@ -217,7 +192,6 @@ PYEOF
   else
     assert_file_exists "test JPEG created" "${TEST_ORIG}"
 
-    # Inject GPS
     "${EXIFTOOL_BIN}" -overwrite_original \
       -GPSLatitude=51.5074 -GPSLongitude=-0.1278 \
       -GPSLatitudeRef=N -GPSLongitudeRef=W \
@@ -242,22 +216,27 @@ PYEOF
   rm -rf "${TMP_EXIF_DIR}"
 fi
 
-# ---------------------------------------------------------------------------
 # Test 5: cmd_push via stubs
-# ---------------------------------------------------------------------------
 echo ""
 echo "=== Test 5: cmd_push with stubs (no phone required) ==="
 
-# Build a temporary stub bin directory
 STUB_DIR=$(mktemp -d)
 ADB_LOG="${STUB_DIR}/adb.log"
 EXIFTOOL_LOG="${STUB_DIR}/exiftool.log"
 
-# Stub adb: log all calls and vary device state via env.
 cat > "${STUB_DIR}/adb" << STUBEOF
 #!/usr/bin/env bash
 echo "\$@" >> "${ADB_LOG}"
 if [[ "\${1:-}" == "connect" ]]; then
+  if [[ -n "\${STUB_ADB_CONNECT_COUNTER_FILE:-}" ]]; then
+    count=\$(cat "\${STUB_ADB_CONNECT_COUNTER_FILE}" 2>/dev/null || echo 0)
+    count=\$((count+1))
+    printf '%s\n' "\${count}" > "\${STUB_ADB_CONNECT_COUNTER_FILE}"
+    if [[ "\${count}" -lt 3 ]]; then
+      echo "error: Connection refused"
+      exit 1
+    fi
+  fi
   if [[ "\${STUB_ADB_CONNECT_FAIL:-0}" == "1" ]]; then
     echo "failed to connect to \${2}"
     exit 1
@@ -288,17 +267,13 @@ exit 0
 STUBEOF
 chmod +x "${STUB_DIR}/adb"
 
-# Stub exiftool: log calls and actually run the real exiftool when stripping,
-# so the real strip behaviour is exercised. Fall back to a no-op if not available.
 if [[ -x "${EXIFTOOL_BIN}" ]]; then
-  # Real exiftool available — wrap it so we can log calls
   cat > "${STUB_DIR}/exiftool" << STUBEOF
 #!/usr/bin/env bash
 echo "\$@" >> "${EXIFTOOL_LOG}"
 exec "${EXIFTOOL_BIN}" "\$@"
 STUBEOF
 else
-  # No real exiftool — stub is a no-op (strip tests are skipped in test 4 already)
   cat > "${STUB_DIR}/exiftool" << 'STUBEOF'
 #!/usr/bin/env bash
 echo "$@" >> "${EXIFTOOL_LOG}"
@@ -307,7 +282,6 @@ STUBEOF
 fi
 chmod +x "${STUB_DIR}/exiftool"
 
-# Write a synthetic config pointing at stubs
 STUB_CFG_DIR=$(mktemp -d)
 STUB_CFG="${STUB_CFG_DIR}/config"
 cat > "${STUB_CFG}" << CFGEOF
@@ -348,14 +322,11 @@ PYEOF
   sips -s format jpeg "${TMP_PNG}" --out "${ORIG_FILE}" >/dev/null 2>&1
   "${EXIFTOOL_BIN}" -overwrite_original -GPSLatitude=51.5 -GPSLongitude=-0.1 -GPSLatitudeRef=N -GPSLongitudeRef=W "${ORIG_FILE}" >/dev/null 2>&1
 else
-  # Fallback: plain binary file (not a real image — strip will be skipped by phonedrop, still tests push path)
   printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${ORIG_FILE}"
 fi
 
-# Take a checksum of the original before the push
 ORIG_MD5=$(md5 -q "${ORIG_FILE}" 2>/dev/null || md5sum "${ORIG_FILE}" | awk '{print $1}')
 
-# Run phonedrop.sh push with stubs injected via env
 > "${ADB_LOG}"
 > "${EXIFTOOL_LOG}"
 STUB_ADB_REMOTE_STATE="device" \
@@ -438,17 +409,11 @@ rm -rf "${WORK_DIR_NONE}"
 echo ""
 echo "--- 5d: adversarial filename injection regression ---"
 
-# This is the regression test for C1 (the original bug):
-# A file named with shell metacharacters must NOT execute arbitrary commands
-# on the phone. The sanitise_basename() function must strip these to safe chars.
-
 WORK_DIR2=$(mktemp -d)
-# Create a file whose raw name contains shell metacharacters
 ADVERSARIAL_NAME="a;touch INJECTED.jpg"
 ADVERSARIAL_FILE="${WORK_DIR2}/${ADVERSARIAL_NAME}"
 printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xD9' > "${ADVERSARIAL_FILE}"
 
-# Sentinel: this file must NOT be created by the push
 INJECTED_SENTINEL="${WORK_DIR2}/INJECTED.jpg"
 assert_file_not_exists "sentinel INJECTED.jpg does not exist before test" "${INJECTED_SENTINEL}"
 
@@ -492,12 +457,29 @@ assert_contains "adb push called for space-named file" "vacation_photo.jpg" "${A
 
 rm -rf "${WORK_DIR3}"
 
-# Cleanup stubs
+echo ""
+echo "--- 5f: rearm retries connect ---"
+
+REARM_COUNTER=$(mktemp "${TMPDIR:-/tmp}/phonedrop-rearm-connect.XXXXXX")
+printf '0\n' > "${REARM_COUNTER}"
+> "${ADB_LOG}"
+set +e
+REARM_OUTPUT=$(
+  STUB_ADB_CONNECT_COUNTER_FILE="${REARM_COUNTER}" \
+  STUB_ADB_DEVICES=$'usb-serial\tdevice\n' \
+  PHONEDROP_REARM_SLEEP=0 \
+  PHONEDROP_CONFIG_FILE="${STUB_CFG}" \
+    bash "${PHONEDROP}" rearm 2>&1
+)
+REARM_STATUS=$?
+set -e
+assert_eq "rearm retry exits zero" "0" "${REARM_STATUS}"
+assert_contains "rearm retry reports reconnect" "reconnected:" "${REARM_OUTPUT}"
+rm -f "${REARM_COUNTER}"
+
 rm -rf "${STUB_DIR}" "${STUB_CFG_DIR}"
 
-# ---------------------------------------------------------------------------
 # Summary
-# ---------------------------------------------------------------------------
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
 if [[ "${FAIL}" -gt 0 ]]; then
