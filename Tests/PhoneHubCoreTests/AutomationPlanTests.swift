@@ -8,6 +8,28 @@ final class AutomationPlanTests: XCTestCase {
     private let androidDevice = Device(id: "ABC123XYZ", platform: .android,
                                        model: "Pixel 8", osVersion: "15", status: "device")
 
+    func testClaudeArgumentsUnchangedByBackendField() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
+        XCTAssertEqual(plan.backend, .claude)
+        XCTAssertEqual(plan.arguments(mcpConfigPath: "/tmp/cfg.json"), [
+            "-p", plan.prompt,
+            "--append-system-prompt", plan.systemPreamble,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--mcp-config", "/tmp/cfg.json",
+            "--allowedTools", "mcp__mirroir__*",
+            "--max-turns", "10",
+            "--permission-mode", "default"
+        ])
+    }
+
+    func testBackendDefaultsToClaude() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios])
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice)
+        XCTAssertEqual(plan.backend, AgentBackend.claude)
+    }
+
     func testIOSRoutesToMirroir() throws {
         let preset = Preset(name: "Open IG", goal: "open instagram",
                             platforms: [.ios], maxSteps: 25)

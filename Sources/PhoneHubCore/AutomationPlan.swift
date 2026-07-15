@@ -5,9 +5,15 @@ public enum AutomationPlanError: Error, Equatable {
     case invalidSerial
 }
 
+public enum AgentBackend: String, Codable, CaseIterable, Sendable {
+    case claude
+    case codex
+}
+
 /// Everything needed to launch the headless `claude` agent for one preset run.
 /// Pure data so it can be built and unit-tested without spawning anything.
 public struct AutomationPlan: Equatable {
+    public let backend: AgentBackend
     public let prompt: String           // the goal + device context (user prompt)
     public let systemPreamble: String   // appended system prompt
     public let mcpConfigJSON: String    // contents of the --mcp-config file
@@ -18,7 +24,9 @@ public struct AutomationPlan: Equatable {
     /// Full argv passed to the resolved `claude` binary (excludes the binary path).
     /// mcpConfigPath is the temp file the caller has written mcpConfigJSON into.
     public func arguments(mcpConfigPath: String) -> [String] {
-        [
+        switch backend {
+        case .claude:
+            return [
             "-p", prompt,
             "--append-system-prompt", systemPreamble,
             "--output-format", "stream-json",
@@ -27,7 +35,11 @@ public struct AutomationPlan: Equatable {
             "--allowedTools", allowedTools,
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
-        ]
+            ]
+        case .codex:
+            // Phase 2 builds Codex argv after validating the installed CLI.
+            return []
+        }
     }
 
     /// Full argv to RESUME an existing session with the user's reply. Reuses the
@@ -37,7 +49,9 @@ public struct AutomationPlan: Equatable {
     public func resumeArguments(sessionId: String,
                                 reply: String,
                                 mcpConfigPath: String) -> [String] {
-        [
+        switch backend {
+        case .claude:
+            return [
             "--resume", sessionId,
             "-p", reply,
             "--append-system-prompt", systemPreamble,
@@ -47,7 +61,11 @@ public struct AutomationPlan: Equatable {
             "--allowedTools", allowedTools,
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
-        ]
+            ]
+        case .codex:
+            // Phase 2 builds Codex resume argv after CLI validation.
+            return []
+        }
     }
 }
 
@@ -67,7 +85,8 @@ resumed with the user's answer.
 /// Build the launch plan for a preset on a device. Pure function — no I/O.
 public func buildAutomationPlan(
     preset: Preset,
-    device: Device
+    device: Device,
+    backend: AgentBackend = .claude
 ) throws -> AutomationPlan {
     guard preset.supports(device.platform) else {
         throw AutomationPlanError.platformMismatch
@@ -117,6 +136,7 @@ public func buildAutomationPlan(
         + "You have a hard cap of \(preset.maxSteps) tool calls; stop before exceeding it."
 
     return AutomationPlan(
+        backend: backend,
         prompt: prompt,
         systemPreamble: automationSystemPreamble,
         mcpConfigJSON: mcpConfigJSON,
