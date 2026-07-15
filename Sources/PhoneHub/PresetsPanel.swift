@@ -64,7 +64,8 @@ struct PresetsPanel: View {
         }
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
-            PresetEditSheet(preset: editing, prefillGoal: prefillGoal, engine: engine) { result in
+            PresetEditSheet(preset: editing, prefillGoal: prefillGoal,
+                            focusedDevice: focused, engine: engine) { result in
                 if let existing = editing, existing.id == result.id {
                     store.update(result)
                 } else {
@@ -282,13 +283,17 @@ private struct PresetRow: View {
 
     var body: some View {
         HStack(spacing: Theme.s2) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(preset.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
-                Text(preset.goal)
-                    .font(.system(size: 10)).foregroundStyle(Theme.subtext)
-                    .lineLimit(1).truncationMode(.tail)
+            Button(action: onEdit) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(preset.name).font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                    Text(preset.goal)
+                        .font(.system(size: 10)).foregroundStyle(Theme.subtext)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer()
+            .buttonStyle(.plain)
             Button(action: onRun) {
                 Image(systemName: "play.fill").font(.system(size: 11))
             }
