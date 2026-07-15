@@ -68,7 +68,7 @@ struct AutomationsPanel: View {
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
             if let editing {
-                AutomationEditSheet(automation: editing) { result in
+                AutomationEditSheet(automation: editing, engine: agentEngine, backend: backend) { result in
                     if store.automations.contains(where: { $0.id == result.id }) { store.update(result) }
                     else { store.add(result) }
                 }

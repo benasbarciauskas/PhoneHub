@@ -4,10 +4,16 @@ import PhoneHubCore
 struct AutomationEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: Automation
+    @State private var condenseError: String?
+    var engine: AutomationEngine
+    let backend: AgentBackend
     let save: (Automation) -> Void
 
-    init(automation: Automation, save: @escaping (Automation) -> Void) {
+    init(automation: Automation, engine: AutomationEngine, backend: AgentBackend,
+         save: @escaping (Automation) -> Void) {
         _draft = State(initialValue: automation)
+        self.engine = engine
+        self.backend = backend
         self.save = save
     }
 
@@ -28,6 +34,9 @@ struct AutomationEditSheet: View {
                 VStack(alignment: .leading, spacing: Theme.s3) {
                     TextField("Name", text: $draft.name).textFieldStyle(.roundedBorder)
                     controls
+                    if let condenseError {
+                        Text(condenseError).font(.system(size: 11)).foregroundStyle(Theme.err)
+                    }
                     HStack {
                         Text("Timeline").font(.headline).foregroundStyle(Theme.text)
                         Spacer()
@@ -67,6 +76,17 @@ struct AutomationEditSheet: View {
             }
             Toggle("Share coordinates across devices", isOn: $draft.sharedCoordinates)
             Toggle("Pin as stage action", isOn: $draft.pinned)
+            if draft.rawSteps != nil {
+                Button { condense() } label: {
+                    if engine.isCondensing {
+                        HStack { ProgressView().controlSize(.small); Text("Condensing…") }
+                    } else {
+                        Label("Condense raw capture", systemImage: "sparkles")
+                    }
+                }
+                .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                .disabled(engine.isCondensing || engine.isBusy)
+            }
         }
         .font(.system(size: 12)).foregroundStyle(Theme.text)
         .padding(Theme.s3).cardSurface()
@@ -93,6 +113,21 @@ struct AutomationEditSheet: View {
     }
 
     private func add(_ step: AutomationStep) { draft.steps.append(step) }
+    private func condense() {
+        guard let rawSteps = draft.rawSteps else { return }
+        condenseError = nil
+        let goal = draft.sourceGoal ?? draft.name
+        Task {
+            do {
+                let condensed = try await engine.condense(goal: goal, rawSteps: rawSteps,
+                                                          backend: backend)
+                draft.steps = condensed
+                draft.useCondensed = true
+            } catch {
+                condenseError = error.localizedDescription
+            }
+        }
+    }
     private func stepBinding(_ index: Int) -> Binding<AutomationStep> {
         Binding(get: { draft.steps[index] }, set: { draft.steps[index] = $0 })
     }
