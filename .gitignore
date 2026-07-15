@@ -39,3 +39,8 @@ PhoneHub.app/
 *.iconset/
 master-icon.png
 phonehub-master-icon.png
+
+# Local agent workflow (kept off GitHub)
+CLAUDE.md
+.claude/
+docs/superpowers/
