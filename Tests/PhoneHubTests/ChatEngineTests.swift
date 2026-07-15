@@ -30,7 +30,7 @@ final class ChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.chat.messages.last?.text, "Install backend")
     }
 
-    func testSendRejectsCodexBeforeAppendingUserMessage() {
+    func testSendAcceptsCodexAndAppendsUserMessage() {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = ChatStore(directory: directory)
@@ -43,14 +43,16 @@ final class ChatEngineTests: XCTestCase {
             backendAvailability: { _ in .available(path: "/usr/bin/false") }
         )
 
-        let accepted = engine.send("Do not spawn", on: device, presetEngineBusy: false)
-
-        XCTAssertFalse(accepted)
-        XCTAssertEqual(engine.chat.messages.map(\.role), [.system])
-        XCTAssertEqual(
-            engine.chat.messages.last?.text,
-            "The codex backend isn't available yet — coming in Phase 2."
+        let accepted = engine.send(
+            "Use codex",
+            on: device,
+            backend: .codex,
+            presetEngineBusy: false
         )
+
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(engine.chat.messages.first?.role, .user)
+        XCTAssertEqual(engine.chat.messages.first?.text, "Use codex")
     }
 
     private func makeEngine(

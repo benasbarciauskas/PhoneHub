@@ -49,7 +49,10 @@ final class ChatEngine {
     }
 
     @discardableResult
-    func send(_ text: String, on device: Device, presetEngineBusy: Bool) -> Bool {
+    func send(_ text: String,
+              on device: Device,
+              backend: AgentBackend = .claude,
+              presetEngineBusy: Bool) -> Bool {
         guard !isBusy else { return false }
         bind(device: device)
         if presetEngineBusy {
@@ -59,7 +62,19 @@ final class ChatEngine {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
-        let status = backendAvailability(chat.backend)
+        let previousBackend = chat.backend
+        chat.sessionId = ChatTurn.sessionId(
+            chat.sessionId,
+            storedBackend: previousBackend,
+            selectedBackend: backend
+        )
+        if previousBackend != backend {
+            chat.backend = backend
+            cleanupConfig()
+            persist()
+        }
+
+        let status = backendAvailability(backend)
         guard case let .available(path) = status else {
             if case let .missing(hint) = status { append(.system, hint) }
             return false
@@ -67,16 +82,11 @@ final class ChatEngine {
 
         let plan: AutomationPlan
         do {
-            plan = try buildChatPlan(device: device, backend: chat.backend)
+            plan = try buildChatPlan(device: device, backend: backend)
         } catch {
             fail("Could not prepare chat: \(error)")
             return false
         }
-        guard plan.backend == .claude else {
-            append(.system, "The codex backend isn't available yet — coming in Phase 2.")
-            return false
-        }
-
         append(.user, trimmed)
         currentPlan = plan
         executablePath = path
@@ -160,7 +170,7 @@ final class ChatEngine {
     }
 
     private func handle(line: String) {
-        let event = StreamJSONParser.parseLine(line)
+        let event = parseStreamLine(line, backend: currentPlan?.backend ?? chat.backend)
         if case let .system(_, sessionId) = event, let sessionId, !sessionId.isEmpty {
             chat.sessionId = sessionId
             persist()

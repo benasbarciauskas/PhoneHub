@@ -10,7 +10,7 @@ public enum AgentBackend: String, Codable, CaseIterable, Sendable {
     case codex
 }
 
-/// Everything needed to launch the headless `claude` agent for one preset run.
+/// Everything needed to launch a headless agent for one preset run.
 /// Pure data so it can be built and unit-tested without spawning anything.
 public struct AutomationPlan: Equatable {
     public let backend: AgentBackend
@@ -21,7 +21,7 @@ public struct AutomationPlan: Equatable {
     public let maxTurns: Int            // value for --max-turns
     public let serverName: String       // "mirroir" | "androir"
 
-    /// Full argv passed to the resolved `claude` binary (excludes the binary path).
+    /// Full argv passed to the resolved backend binary (excludes the binary path).
     /// mcpConfigPath is the temp file the caller has written mcpConfigJSON into.
     public func arguments(mcpConfigPath: String) -> [String] {
         switch backend {
@@ -37,8 +37,16 @@ public struct AutomationPlan: Equatable {
             "--permission-mode", "default"
             ]
         case .codex:
-            // Phase 2 builds Codex argv after validating the installed CLI.
-            return []
+            // Codex has no append-system-prompt, allowedTools, or max-turns
+            // equivalents. The preamble carries the step cap and configuring only
+            // this MCP server limits phone-tool exposure. Keep its shell sandbox
+            // read-only: the MCP server is the intended side-effect surface.
+            return [
+                "exec",
+                "--json",
+                "--skip-git-repo-check",
+                "-s", "read-only"
+            ] + codexMCPArguments + ["\(systemPreamble)\n\n\(prompt)"]
         }
     }
 
@@ -63,9 +71,28 @@ public struct AutomationPlan: Equatable {
             "--permission-mode", "default"
             ]
         case .codex:
-            // Phase 2 builds Codex resume argv after CLI validation.
-            return []
+            // `exec resume` inherits the original session's read-only sandbox.
+            return ["exec", "resume", sessionId, "--json"]
+                + codexMCPArguments
+                + [reply]
         }
+    }
+
+    private var codexMCPArguments: [String] {
+        let args: String
+        switch serverName {
+        case "mirroir":
+            args = "[\"-y\",\"mirroir-mcp\",\"--dangerously-skip-permissions\"]"
+        case "androir":
+            args = "[\"-y\",\"androir-mcp\"]"
+        default:
+            args = "[]"
+        }
+        return [
+            "-c", "mcp_servers.\(serverName).command=npx",
+            "-c", "mcp_servers.\(serverName).args=\(args)",
+            "-c", "mcp_servers.\(serverName).default_tools_approval_mode=\"approve\""
+        ]
     }
 }
 
@@ -149,7 +176,7 @@ public func buildAutomationPlan(
         + "You have a hard cap of \(preset.maxSteps) tool calls; stop before exceeding it."
 
     return AutomationPlan(
-        backend: backend,
+        backend: preset.backend ?? backend,
         prompt: prompt,
         systemPreamble: automationSystemPreamble,
         mcpConfigJSON: wiring.mcpJSON,

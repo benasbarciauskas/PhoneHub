@@ -24,4 +24,17 @@ final class ChatTurnTests: XCTestCase {
             alreadyRetried: true
         ))
     }
+
+    func testBackendSwitchDropsSession() {
+        XCTAssertNil(ChatTurn.sessionId(
+            "existing-session",
+            storedBackend: .claude,
+            selectedBackend: .codex
+        ))
+        XCTAssertEqual(ChatTurn.sessionId(
+            "existing-session",
+            storedBackend: .codex,
+            selectedBackend: .codex
+        ), "existing-session")
+    }
 }
