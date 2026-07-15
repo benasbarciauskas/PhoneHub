@@ -120,8 +120,9 @@ final class AutomationEngine {
 
     /// Spawn the initial `claude` for a prepared plan.
     private func launch(plan: AutomationPlan, preset: Preset, device: Device, header: String) {
-        guard let claudePath = resolveClaude() else {
-            fail("`claude` CLI not found (expected on PATH or ~/.local/bin).")
+        let backendStatus = BackendAvailability.check(.claude)
+        guard case let .available(path: claudePath) = backendStatus else {
+            if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
         guard let url = writeConfig(plan.mcpConfigJSON) else { return }
@@ -153,8 +154,9 @@ final class AutomationEngine {
         }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { return }
-        guard let claudePath = resolveClaude() else {
-            fail("`claude` CLI not found (expected on PATH or ~/.local/bin).")
+        let backendStatus = BackendAvailability.check(.claude)
+        guard case let .available(path: claudePath) = backendStatus else {
+            if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
         pendingQuestion = nil
@@ -191,7 +193,9 @@ final class AutomationEngine {
     func refine(_ text: String) async throws -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
-        guard let claudePath = resolveClaude() else { throw RefineError.claudeNotFound }
+        guard case let .available(path: claudePath) = BackendAvailability.check(.claude) else {
+            throw RefineError.claudeNotFound
+        }
         isRefining = true
         defer { isRefining = false }
 
@@ -331,11 +335,4 @@ final class AutomationEngine {
         return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Resolve the `claude` binary: Homebrew/system paths, then ~/.local/bin.
-    private func resolveClaude() -> String? {
-        if let path = resolveTool("claude") { return path }
-        let local = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/claude").path
-        return FileManager.default.isExecutableFile(atPath: local) ? local : nil
-    }
 }
