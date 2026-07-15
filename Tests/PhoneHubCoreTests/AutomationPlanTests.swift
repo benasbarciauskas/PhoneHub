@@ -30,6 +30,20 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertEqual(plan.backend, AgentBackend.claude)
     }
 
+    func testPresetBackendOverridesAppDefault() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], backend: .claude)
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: .codex)
+        XCTAssertEqual(plan.backend, .claude)
+
+        let inherited = Preset(name: "p", goal: "g", platforms: [.ios])
+        let inheritedPlan = try buildAutomationPlan(
+            preset: inherited,
+            device: iosDevice,
+            backend: .codex
+        )
+        XCTAssertEqual(inheritedPlan.backend, .codex)
+    }
+
     func testCodexInitialArguments() throws {
         let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
         let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: .codex)

@@ -1,5 +1,12 @@
 import Foundation
 
+public func parseStreamLine(_ line: String, backend: AgentBackend) -> StreamEvent {
+    switch backend {
+    case .claude: return StreamJSONParser.parseLine(line)
+    case .codex: return CodexStreamParser.parseLine(line)
+    }
+}
+
 /// Digests one line from `codex exec --json` into the shared stream model.
 public enum CodexStreamParser {
     public static func parseLine(_ line: String) -> StreamEvent {

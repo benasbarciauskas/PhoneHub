@@ -13,6 +13,14 @@ final class PresetStoreTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    func testExistingPresetJSONDecodesWithNoBackendOverride() throws {
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000001","name":"Old","goal":"g","platforms":["ios"],"maxSteps":40}
+        """
+        let preset = try JSONDecoder().decode(Preset.self, from: Data(json.utf8))
+        XCTAssertNil(preset.backend)
+    }
+
     func testDecodeTolerantSkipsBadEntries() {
         // Second entry is missing required fields (name/goal/platforms) → dropped.
         let json = """

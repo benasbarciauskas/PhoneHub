@@ -10,7 +10,7 @@ public enum AgentBackend: String, Codable, CaseIterable, Sendable {
     case codex
 }
 
-/// Everything needed to launch the headless `claude` agent for one preset run.
+/// Everything needed to launch a headless agent for one preset run.
 /// Pure data so it can be built and unit-tested without spawning anything.
 public struct AutomationPlan: Equatable {
     public let backend: AgentBackend
@@ -21,7 +21,7 @@ public struct AutomationPlan: Equatable {
     public let maxTurns: Int            // value for --max-turns
     public let serverName: String       // "mirroir" | "androir"
 
-    /// Full argv passed to the resolved `claude` binary (excludes the binary path).
+    /// Full argv passed to the resolved backend binary (excludes the binary path).
     /// mcpConfigPath is the temp file the caller has written mcpConfigJSON into.
     public func arguments(mcpConfigPath: String) -> [String] {
         switch backend {
@@ -176,7 +176,7 @@ public func buildAutomationPlan(
         + "You have a hard cap of \(preset.maxSteps) tool calls; stop before exceeding it."
 
     return AutomationPlan(
-        backend: backend,
+        backend: preset.backend ?? backend,
         prompt: prompt,
         systemPreamble: automationSystemPreamble,
         mcpConfigJSON: wiring.mcpJSON,

@@ -25,7 +25,7 @@ enum RefineError: Error, LocalizedError {
     }
 }
 
-/// Drives a single AI preset run. Spawns a headless `claude` wired to the
+/// Drives a single AI preset run. Spawns the selected headless agent wired to the
 /// phone-control MCP for the focused device's platform, streams its
 /// stream-json output into a live log, and exposes a Stop control.
 ///
@@ -82,11 +82,11 @@ final class AutomationEngine {
     }
 
     /// Start a saved preset on a device. No-op if a run is already active/paused.
-    func run(preset: Preset, on device: Device) {
+    func run(preset: Preset, on device: Device, backend: AgentBackend = .claude) {
         guard !isBusy else { return }
         let plan: AutomationPlan
         do {
-            plan = try buildAutomationPlan(preset: preset, device: device)
+            plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
         } catch AutomationPlanError.platformMismatch {
             fail("This preset does not support \(device.platform == .ios ? "iOS" : "Android").")
             return
@@ -100,7 +100,7 @@ final class AutomationEngine {
 
     /// Run typed text as a one-off goal on the focused device. The transient
     /// preset is never saved; it goes through the SAME plan/spawn path.
-    func runAdhoc(goal: String, on device: Device) {
+    func runAdhoc(goal: String, on device: Device, backend: AgentBackend = .claude) {
         guard !isBusy else { return }
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -109,7 +109,7 @@ final class AutomationEngine {
                             platforms: [device.platform])
         let plan: AutomationPlan
         do {
-            plan = try buildAutomationPlan(preset: preset, device: device)
+            plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
         } catch {
             fail("Could not prepare the run: \(error)")
             return
@@ -118,10 +118,10 @@ final class AutomationEngine {
                header: "Running command on \(device.model)…")
     }
 
-    /// Spawn the initial `claude` for a prepared plan.
+    /// Spawn the selected backend for a prepared plan.
     private func launch(plan: AutomationPlan, preset: Preset, device: Device, header: String) {
-        let backendStatus = BackendAvailability.check(.claude)
-        guard case let .available(path: claudePath) = backendStatus else {
+        let backendStatus = BackendAvailability.check(plan.backend)
+        guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
@@ -136,7 +136,7 @@ final class AutomationEngine {
         currentAction = "Starting…"
         log = [header]
 
-        spawn(executablePath: claudePath, args: plan.arguments(mcpConfigPath: url.path))
+        spawn(executablePath: executablePath, args: plan.arguments(mcpConfigPath: url.path))
     }
 
     /// Resume the paused run with the user's answer (same session + flags).
@@ -154,8 +154,8 @@ final class AutomationEngine {
         }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { return }
-        let backendStatus = BackendAvailability.check(.claude)
-        guard case let .available(path: claudePath) = backendStatus else {
+        let backendStatus = BackendAvailability.check(plan.backend)
+        guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
@@ -166,7 +166,7 @@ final class AutomationEngine {
 
         let args = plan.resumeArguments(sessionId: session, reply: answer,
                                         mcpConfigPath: url.path)
-        spawn(executablePath: claudePath, args: args)
+        spawn(executablePath: executablePath, args: args)
     }
 
     private func spawn(executablePath: String, args: [String]) {
@@ -182,7 +182,7 @@ final class AutomationEngine {
                 }
             )
         } catch {
-            fail("Failed to launch claude: \(error)")
+            fail("Failed to launch \(currentPlan?.backend.rawValue ?? "agent"): \(error)")
             cleanupConfig()
         }
     }
@@ -249,7 +249,8 @@ final class AutomationEngine {
     // MARK: - Stream handling
 
     private func handle(line: String) {
-        let event = StreamJSONParser.parseLine(line)
+        guard let backend = currentPlan?.backend else { return }
+        let event = parseStreamLine(line, backend: backend)
         // Capture the session id whenever it's advertised. The CLI rotates the
         // id on `--resume`, and a resumed run may only re-advertise it on the
         // final `result` event (not the init `system` event), so we update the
@@ -289,7 +290,8 @@ final class AutomationEngine {
                 state = .finished
                 currentAction = "Finished"
             } else {
-                let msg = reason.isEmpty ? "claude exited with code \(code)" : "claude \(reason)"
+                let backend = currentPlan?.backend.rawValue ?? "agent"
+                let msg = reason.isEmpty ? "\(backend) exited with code \(code)" : "\(backend) \(reason)"
                 state = .failed(msg)
                 currentAction = "Failed"
                 log.append(msg)
