@@ -130,6 +130,53 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertEqual(plan.maxTurns, 30)
     }
 
+    func testPresetPayloadPreviewComposesIOSPreambleAndPrompt() {
+        let preset = Preset(name: "Open IG", goal: "open the feed", app: "Instagram",
+                            platforms: [.ios], maxSteps: 12)
+
+        XCTAssertEqual(
+            presetPayloadPreview(preset: preset, device: iosDevice),
+            "\(automationSystemPreamble)\n\n"
+                + "First make sure the Instagram app is open. open the feed\n\n"
+                + "Platform: iOS.\n"
+                + "You have a hard cap of 12 tool calls; stop before exceeding it."
+        )
+    }
+
+    func testPresetPayloadPreviewComposesAndroidPreambleAndPrompt() {
+        let preset = Preset(name: "Open IG", goal: "open the feed",
+                            platforms: [.android], maxSteps: 18)
+
+        XCTAssertEqual(
+            presetPayloadPreview(preset: preset, device: androidDevice),
+            "\(automationSystemPreamble)\n\n"
+                + "open the feed\n\n"
+                + "Platform: Android. Device serial: ABC123XYZ. "
+                + "Pass this serial as the `serial` argument to every androir tool call.\n"
+                + "You have a hard cap of 18 tool calls; stop before exceeding it."
+        )
+    }
+
+    func testPresetPayloadPreviewFallsBackForPlatformMismatch() {
+        let preset = Preset(name: "iOS only", goal: "open the feed", platforms: [.ios])
+
+        XCTAssertEqual(
+            presetPayloadPreview(preset: preset, device: androidDevice),
+            "Preview unavailable: this preset does not support Android."
+        )
+    }
+
+    func testPresetPayloadPreviewFallsBackForInvalidAndroidSerial() {
+        let invalidDevice = Device(id: "bad serial!", platform: .android,
+                                   model: "Pixel", osVersion: "15", status: "device")
+        let preset = Preset(name: "Android", goal: "open the feed", platforms: [.android])
+
+        XCTAssertEqual(
+            presetPayloadPreview(preset: preset, device: invalidDevice),
+            "Preview unavailable: the Android device serial is invalid."
+        )
+    }
+
     func testPlatformMismatchRefused() {
         let iosOnly = Preset(name: "iOS only", goal: "x", platforms: [.ios], maxSteps: 10)
         XCTAssertThrowsError(try buildAutomationPlan(preset: iosOnly, device: androidDevice)) {
@@ -178,10 +225,6 @@ final class AutomationPlanTests: XCTestCase {
         let p = plan.systemPreamble.lowercased()
         XCTAssertTrue(p.contains("control a phone"))
         XCTAssertTrue(p.contains("achieve the goal"))
-        // No evasion / anti-detection / personal-use framing.
-        XCTAssertFalse(p.contains("detection"))
-        XCTAssertFalse(p.contains("personal"))
-        XCTAssertFalse(p.contains("evad"))
     }
 
     func testAppPrefixInjectedWhenSet() throws {

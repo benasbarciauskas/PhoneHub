@@ -96,8 +96,7 @@ public struct AutomationPlan: Equatable {
     }
 }
 
-/// Neutral, operational system preamble for the spawned agent. No
-/// personal-use disclaimer and no evasion/anti-detection instructions.
+/// Operational system preamble for the spawned agent.
 public let automationSystemPreamble = """
 You control a phone through the attached tools. Achieve the goal. Use only the \
 attached phone-control tools. Stop when the goal is met or the step cap is \
@@ -184,6 +183,22 @@ public func buildAutomationPlan(
         maxTurns: preset.maxSteps,
         serverName: wiring.server
     )
+}
+
+/// Render the exact system-preamble + user-prompt payload for a preset run.
+/// Preview errors are converted to readable notes so the detail editor remains useful.
+public func presetPayloadPreview(preset: Preset, device: Device) -> String {
+    do {
+        let plan = try buildAutomationPlan(preset: preset, device: device)
+        return "\(plan.systemPreamble)\n\n\(plan.prompt)"
+    } catch AutomationPlanError.platformMismatch {
+        let platformName = device.platform == .ios ? "iOS" : "Android"
+        return "Preview unavailable: this preset does not support \(platformName)."
+    } catch AutomationPlanError.invalidSerial {
+        return "Preview unavailable: the Android device serial is invalid."
+    } catch {
+        return "Preview unavailable: \(error.localizedDescription)"
+    }
 }
 
 public func buildChatPlan(
