@@ -53,6 +53,13 @@ struct PresetsPanel: View {
                     .padding(.horizontal, Theme.s2)
                 listView
             }
+
+            Text(SkillsStatus.mirroirSkillsInstalled()
+                 ? "iOS skills: installed ✓"
+                 : "iOS skills: not installed — run scripts/setup-skills.sh")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.subtext)
+                .padding(.horizontal, Theme.s3)
         }
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
