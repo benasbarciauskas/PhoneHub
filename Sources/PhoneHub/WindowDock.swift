@@ -301,6 +301,18 @@ func clearDockedIPhoneMirroringWindows() {
 }
 
 @MainActor
+func readIPhoneMirroringWindowTitle(processIdentifier: pid_t) -> String? {
+    let appElement = AXUIElementCreateApplication(processIdentifier)
+    AXUIElementSetMessagingTimeout(appElement, 0.2)
+    guard let window = firstWindow(in: appElement),
+          let title = readAXTitle(window)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !title.isEmpty else {
+        return nil
+    }
+    return title
+}
+
+@MainActor
 private func trackDockedIPhoneMirroringWindow(processIdentifier: pid_t) {
     dockedIPhoneMirroringProcessIDs.insert(processIdentifier)
 }
