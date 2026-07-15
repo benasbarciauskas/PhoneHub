@@ -76,13 +76,30 @@ func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) thr
         throw WindowDockError.windowSizeUnavailable(ownerName)
     }
 
-    let centeredRect = centeredRect(forContentSize: mirrorSize, within: rect, inset: 12)
+    let inset: CGFloat = 12
+    let insetX = min(inset, max(0, rect.width / 2))
+    let insetY = min(inset, max(0, rect.height / 2))
+    let targetSize = rect.insetBy(dx: insetX, dy: insetY).size
+    var finalSize = mirrorSize
+    if exceedsTarget(finalSize, target: targetSize) {
+        let constrainedSize = aspectFitSize(finalSize, within: targetSize)
+        guard constrainedSize.width > 0,
+              constrainedSize.height > 0,
+              setAXSize(window, to: constrainedSize),
+              let verifiedSize = readAXSize(window),
+              !exceedsTarget(verifiedSize, target: targetSize) else {
+            throw WindowDockError.setFrameFailed
+        }
+        finalSize = verifiedSize
+    }
+
+    let centeredRect = centeredRect(forContentSize: finalSize, within: rect, inset: inset)
     guard repositionAXWindowIfNeeded(window, to: centeredRect.origin) else {
         throw WindowDockError.setFrameFailed
     }
 
     trackDockedIPhoneMirroringWindow(processIdentifier: app.processIdentifier)
-    return mirrorSize
+    return finalSize
 }
 
 @MainActor
