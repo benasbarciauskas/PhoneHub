@@ -107,6 +107,21 @@ struct AutomationsPanel: View {
         runner.clearResult()
         if let goal = updated.sourceGoal, !agentEngine.isBusy, !chatBusy {
             agentEngine.runAdhoc(goal: goal, on: focused, backend: backend)
+            Task {
+                while agentEngine.isBusy {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+                guard case .finished = agentEngine.state, !agentEngine.lastCapture.isEmpty else { return }
+                let learned = automationDraft(from: agentEngine.lastCapture,
+                                              platform: updated.platform,
+                                              name: updated.name,
+                                              sourceGoal: goal)
+                updated.steps = learned.steps
+                updated.rawSteps = learned.rawSteps
+                updated.useCondensed = false
+                store.update(updated)
+                agentEngine.clearCapture()
+            }
         }
     }
 }

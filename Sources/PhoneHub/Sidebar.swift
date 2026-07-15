@@ -76,7 +76,7 @@ struct Sidebar: View {
             switch lowerPanel {
             case .presets:
                 ScrollView {
-                    PresetsPanel(store: presetStore, engine: engine,
+                    PresetsPanel(store: presetStore, automationStore: automationStore, engine: engine,
                                  chatBusy: chatEngine.isBusy, automationBusy: automationRunner.isBusy,
                                  focused: store.focusedDevice,
                                  agentBackend: agentBackend)

@@ -160,7 +160,10 @@ final class AutomationRunner {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         switch agentEngine.state {
-        case .finished: return
+        case .finished:
+            agentEngine.clearCapture()
+            agentEngine.dismissResult()
+            return
         case .failed(let message): throw RunnerError.ai(message)
         case .stopped: throw CancellationError()
         default: throw RunnerError.ai("AI step did not finish.")

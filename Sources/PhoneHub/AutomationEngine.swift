@@ -53,6 +53,7 @@ final class AutomationEngine {
     private(set) var currentAction: String?
     private(set) var runningPreset: Preset?
     private(set) var isRefining = false
+    private(set) var lastCapture: [CapturedCall] = []
 
     private var process: StreamingProcess?
     private var configURL: URL?
@@ -61,6 +62,7 @@ final class AutomationEngine {
     private var currentPlan: AutomationPlan?
     private var sessionId: String?
     private var pendingQuestion: String?
+    private var currentCapture: [CapturedCall] = []
 
     var isRunning: Bool {
         if case .running = state { return true }
@@ -130,6 +132,8 @@ final class AutomationEngine {
         currentPlan = plan
         sessionId = nil
         pendingQuestion = nil
+        currentCapture = []
+        lastCapture = []
 
         state = .running
         runningPreset = preset
@@ -265,6 +269,9 @@ final class AutomationEngine {
         if case let .needInput(question) = event {
             pendingQuestion = question
         }
+        if case let .toolUse(name, _, rawInput) = event {
+            currentCapture.append(CapturedCall(tool: name, rawInput: rawInput))
+        }
         guard let update = StreamJSONParser.update(for: event) else { return }
         if let logLine = update.logLine { log.append(logLine) }
         if let action = update.currentAction { currentAction = action }
@@ -289,6 +296,7 @@ final class AutomationEngine {
             if code == 0 {
                 state = .finished
                 currentAction = "Finished"
+                lastCapture = currentCapture
             } else {
                 let backend = currentPlan?.backend.rawValue ?? "agent"
                 let msg = reason.isEmpty ? "\(backend) exited with code \(code)" : "\(backend) \(reason)"
@@ -335,6 +343,10 @@ final class AutomationEngine {
     static func canResume(sessionId: String?) -> Bool {
         guard let id = sessionId else { return false }
         return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func clearCapture() {
+        lastCapture = []
     }
 
 }

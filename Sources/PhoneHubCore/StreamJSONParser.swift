@@ -5,7 +5,7 @@ public enum StreamEvent: Equatable {
     case system(subtype: String, sessionId: String?)  // init carries the session id
     case assistantText(String)          // model said something to the user
     case needInput(question: String)    // model emitted `NEED_INPUT: <question>`
-    case toolUse(name: String, summary: String) // model invoked a phone-control tool
+    case toolUse(name: String, summary: String, rawInput: String) // tool arguments as compact JSON
     case toolResult(String)             // result of a tool call
     case result(subtype: String, text: String?, sessionId: String?) // final result / error; result events re-advertise session_id
     case ignored                        // a line we don't surface
@@ -56,7 +56,8 @@ public enum StreamJSONParser {
                 if blockType == "tool_use" {
                     let name = block["name"] as? String ?? "tool"
                     let summary = summarize(input: block["input"])
-                    return .toolUse(name: shortToolName(name), summary: summary)
+                    return .toolUse(name: shortToolName(name), summary: summary,
+                                    rawInput: jsonString(input: block["input"]))
                 }
             }
             for block in content where block["type"] as? String == "text" {
@@ -116,7 +117,7 @@ public enum StreamJSONParser {
             return StreamUpdate(logLine: text)
         case .needInput(let question):
             return StreamUpdate(logLine: "? \(question)", currentAction: "Needs input")
-        case .toolUse(let name, let summary):
+        case .toolUse(let name, let summary, _):
             let action = summary.isEmpty ? name : "\(name) \(summary)"
             return StreamUpdate(logLine: "→ \(action)", currentAction: action)
         case .result(let subtype, let text, _):
@@ -157,5 +158,19 @@ public enum StreamJSONParser {
             return nil
         }
         return parts.joined(separator: " ")
+    }
+
+    static func jsonString(input: Any?) -> String {
+        if let string = input as? String {
+            guard let data = string.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) else { return string }
+            return jsonString(input: object)
+        }
+        let object = input ?? [String: Any]()
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else {
+            return "{}"
+        }
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 }

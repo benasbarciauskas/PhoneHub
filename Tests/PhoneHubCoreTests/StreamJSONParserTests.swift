@@ -60,9 +60,10 @@ final class StreamJSONParserTests: XCTestCase {
     func testParsesToolUseAndStripsPrefix() {
         let event = StreamJSONParser.parseLine(
             #"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__mirroir__tap","input":{"x":120,"y":340}}]}}"#)
-        guard case let .toolUse(name, summary) = event else { return XCTFail("not toolUse") }
+        guard case let .toolUse(name, summary, rawInput) = event else { return XCTFail("not toolUse") }
         XCTAssertEqual(name, "tap")
         XCTAssertTrue(summary.contains("x=120"))
+        XCTAssertEqual(rawInput, #"{"x":120,"y":340}"#)
         let update = StreamJSONParser.update(for: event)
         XCTAssertEqual(update?.currentAction, "tap x=120 y=340")
     }

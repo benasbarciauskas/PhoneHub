@@ -5,6 +5,7 @@ import PhoneHubCore
 /// below the device list.
 struct PresetsPanel: View {
     @Bindable var store: PresetStore
+    @Bindable var automationStore: AutomationStore
     var engine: AutomationEngine
     var chatBusy: Bool
     var automationBusy: Bool
@@ -227,6 +228,19 @@ struct PresetsPanel: View {
             }
 
             if !engine.isBusy {
+                if !engine.lastCapture.isEmpty, let focused, let preset = engine.runningPreset {
+                    Button("Save as automation") {
+                        let draft = automationDraft(from: engine.lastCapture,
+                                                    platform: focused.platform,
+                                                    name: "\(preset.name) automation",
+                                                    sourceGoal: preset.goal)
+                        automationStore.add(draft)
+                        engine.clearCapture()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .font(.system(size: 12, weight: .semibold))
+                }
                 Button("Done") { engine.dismissResult() }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.accent)
