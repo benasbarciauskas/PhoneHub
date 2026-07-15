@@ -96,8 +96,7 @@ public struct AutomationPlan: Equatable {
     }
 }
 
-/// Neutral, operational system preamble for the spawned agent. No
-/// personal-use disclaimer and no evasion/anti-detection instructions.
+/// Operational system preamble for the spawned agent.
 public let automationSystemPreamble = """
 You control a phone through the attached tools. Achieve the goal. Use only the \
 attached phone-control tools. Stop when the goal is met or the step cap is \

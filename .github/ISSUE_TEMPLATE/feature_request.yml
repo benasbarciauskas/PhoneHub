@@ -5,12 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion. Please keep requests within the project's
-        scope: a personal multi-device control and mirroring dashboard for the
-        owner's own iPhones and Android phones. Requests aimed at
-        detection-evasion, "humanization" for avoidance, proxy/SIM rotation, or
-        multi-account-per-device farm orchestration are out of scope and will be
-        closed.
+        Thanks for the suggestion. PhoneHub is a multi-device control and
+        mirroring dashboard for iPhones and Android phones — feature requests
+        that fit that scope are welcome.
   - type: textarea
     id: problem
     attributes:

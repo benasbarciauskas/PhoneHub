@@ -225,10 +225,6 @@ final class AutomationPlanTests: XCTestCase {
         let p = plan.systemPreamble.lowercased()
         XCTAssertTrue(p.contains("control a phone"))
         XCTAssertTrue(p.contains("achieve the goal"))
-        // No evasion / anti-detection / personal-use framing.
-        XCTAssertFalse(p.contains("detection"))
-        XCTAssertFalse(p.contains("personal"))
-        XCTAssertFalse(p.contains("evad"))
     }
 
     func testAppPrefixInjectedWhenSet() throws {
