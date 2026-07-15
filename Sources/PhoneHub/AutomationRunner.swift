@@ -15,6 +15,7 @@ final class AutomationRunner {
 
     private(set) var state: RunState = .idle
     private(set) var log: [String] = []
+    private(set) var runningAutomationID: UUID?
     var backend: AgentBackend = .claude
 
     private let store: AutomationStore
@@ -46,6 +47,7 @@ final class AutomationRunner {
         }
 
         log = ["Running “\(automation.name)” on \(device.model)…"]
+        runningAutomationID = automation.id
         state = .running(stepIndex: 0, iteration: 0)
         let token = UUID()
         runToken = token
@@ -71,6 +73,7 @@ final class AutomationRunner {
         guard !isBusy else { return }
         state = .idle
         log = []
+        runningAutomationID = nil
     }
 
     private func execute(_ original: Automation, on device: Device, token: UUID) async {

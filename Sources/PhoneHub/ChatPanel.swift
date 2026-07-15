@@ -4,6 +4,7 @@ import PhoneHubCore
 struct ChatPanel: View {
     var engine: ChatEngine
     var presetEngine: AutomationEngine
+    var automationBusy: Bool
     let focused: Device?
     let backend: AgentBackend
 
@@ -63,8 +64,8 @@ struct ChatPanel: View {
 
     private func composer(for device: Device) -> some View {
         VStack(spacing: Theme.s2) {
-            if presetEngine.isBusy {
-                Text("Preset run active")
+            if presetEngine.isBusy || automationBusy {
+                Text(automationBusy ? "Automation run active" : "Preset run active")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.subtext)
             }
@@ -79,7 +80,7 @@ struct ChatPanel: View {
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
-                    .disabled(engine.isBusy || presetEngine.isBusy)
+                    .disabled(engine.isBusy || presetEngine.isBusy || automationBusy)
                     .onSubmit { send(on: device) }
 
                 if engine.isBusy {
@@ -115,6 +116,7 @@ struct ChatPanel: View {
     private var canSend: Bool {
         !engine.isBusy
             && !presetEngine.isBusy
+            && !automationBusy
             && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -122,7 +124,7 @@ struct ChatPanel: View {
         guard canSend else { return }
         let text = input
         if engine.send(text, on: device, backend: backend,
-                       presetEngineBusy: presetEngine.isBusy) {
+                       presetEngineBusy: presetEngine.isBusy || automationBusy) {
             input = ""
         }
     }

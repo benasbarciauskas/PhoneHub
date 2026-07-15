@@ -7,6 +7,7 @@ struct PresetsPanel: View {
     @Bindable var store: PresetStore
     var engine: AutomationEngine
     var chatBusy: Bool
+    var automationBusy: Bool
     let focused: Device?
     let agentBackend: AgentBackend
 
@@ -29,6 +30,7 @@ struct PresetsPanel: View {
         guard let focused, focused.isReady || focused.platform == .ios else { return false }
         return !engine.isBusy
             && !chatBusy
+            && !automationBusy
             && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -176,7 +178,7 @@ struct PresetsPanel: View {
     private func canRun(_ preset: Preset) -> Bool {
         guard let focused, focused.isReady || focused.platform == .ios else { return false }
         guard preset.supports(focused.platform) else { return false }
-        return !engine.isBusy && !chatBusy
+        return !engine.isBusy && !chatBusy && !automationBusy
     }
 
     // MARK: - Running

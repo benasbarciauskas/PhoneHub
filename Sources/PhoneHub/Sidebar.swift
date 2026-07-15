@@ -4,8 +4,10 @@ import PhoneHubCore
 struct Sidebar: View {
     @Bindable var store: DeviceStore
     @Bindable var presetStore: PresetStore
+    @Bindable var automationStore: AutomationStore
     var engine: AutomationEngine
     var chatEngine: ChatEngine
+    var automationRunner: AutomationRunner
     @Binding var agentBackend: AgentBackend
 
     @State private var lowerPanel: LowerPanel = .presets
@@ -64,6 +66,7 @@ struct Sidebar: View {
 
             Picker("Panel", selection: $lowerPanel) {
                 Text("Presets").tag(LowerPanel.presets)
+                Text("Automations").tag(LowerPanel.automations)
                 Text("Chat").tag(LowerPanel.chat)
             }
             .pickerStyle(.segmented)
@@ -74,11 +77,19 @@ struct Sidebar: View {
             case .presets:
                 ScrollView {
                     PresetsPanel(store: presetStore, engine: engine,
-                                 chatBusy: chatEngine.isBusy, focused: store.focusedDevice,
+                                 chatBusy: chatEngine.isBusy, automationBusy: automationRunner.isBusy,
+                                 focused: store.focusedDevice,
                                  agentBackend: agentBackend)
+                }
+            case .automations:
+                ScrollView {
+                    AutomationsPanel(store: automationStore, runner: automationRunner,
+                                     agentEngine: engine, chatBusy: chatEngine.isBusy,
+                                     focused: store.focusedDevice, backend: agentBackend)
                 }
             case .chat:
                 ChatPanel(engine: chatEngine, presetEngine: engine,
+                          automationBusy: automationRunner.isBusy,
                           focused: store.focusedDevice, backend: agentBackend)
             }
         }
@@ -89,6 +100,7 @@ struct Sidebar: View {
 
 private enum LowerPanel: Hashable {
     case presets
+    case automations
     case chat
 }
 
