@@ -36,15 +36,19 @@ Mirroring) and **Android phones** (via `adb`), launches each device's real
 mirror window, and docks it into a managed stage — so you can watch one phone up
 close, or lay several out side by side as a video wall.
 
-On top of the mirror, PhoneHub adds **AI automation presets**: a preset is a
+On top of the mirror, PhoneHub adds **AI automation presets and device chat**:
+a preset is a
 plain-English goal, and running it spawns a headless agent that reads the
 device's screen and drives it toward that goal — recovering from popups along
-the way — while PhoneHub streams the run log and gives you a Stop button.
+the way — while chat lets you ask follow-up questions and request actions in one
+persisted conversation. PhoneHub streams active work and always provides Stop.
 
 Everything is native and local. Mirroring uses the OS's own surfaces (iPhone
 Mirroring and `scrcpy`); automation shells out to the [mirroir](https://github.com/jfarcand/mirroir-mcp)
 (iOS) and [androir](https://github.com/benasbarciauskas/androir-mcp) (Android)
-MCP servers plus the `claude` CLI. PhoneHub itself is the dashboard around them.
+MCP servers plus your locally authenticated LLM CLI. Phase 1 uses `claude`;
+Codex backend support is staged for Phase 2. PhoneHub itself is the dashboard
+around them.
 
 <p align="right"><a href="#readme-top">back to top ↑</a></p>
 
@@ -63,10 +67,14 @@ MCP servers plus the `claude` CLI. PhoneHub itself is the dashboard around them.
 - 🤖 **AI automation presets** — name a plain-English goal and let an agent drive
   the focused device toward it via `mirroir` (iOS) / `androir` (Android): it
   reads the screen, decides, taps/swipes/types, and recovers from popups and ads.
+- 💬 **Device Chat** — converse with an agent bound to the focused device, ask
+  what is on screen, request actions, and keep a per-device transcript across
+  app launches.
 - 📜 **Live run log & Stop** — every preset run streams its progress into the app
   in real time, with a visible Stop that ends the run immediately.
-- 🔒 **Local & credential-free** — PhoneHub talks only to the devices your Mac
-  already sees; it stores no account credentials and runs entirely on your host.
+- 🔒 **Bring your own LLM login** — PhoneHub uses your host user's local
+  `claude` (and, in Phase 2, `codex`) CLI login. It never stores or reads API
+  keys or account credentials.
 
 <p align="right"><a href="#readme-top">back to top ↑</a></p>
 
@@ -82,6 +90,16 @@ MCP servers plus the `claude` CLI. PhoneHub itself is the dashboard around them.
 - **Automation (optional):** [mirroir](https://github.com/jfarcand/mirroir-mcp)
   (iOS) and/or [androir](https://github.com/benasbarciauskas/androir-mcp)
   (Android) on the host, plus the `claude` CLI for the agent loop.
+
+Install or update the iOS automation skills consumed by mirroir:
+
+```bash
+scripts/setup-skills.sh
+```
+
+The script clones into `~/.mirroir-mcp/skills` and is safe to rerun. There is
+currently no published Android skills repository, so the script reports that
+and continues without error.
 
 ### Build & run
 
@@ -134,6 +152,31 @@ it at any time.
 
 <p align="right"><a href="#readme-top">back to top ↑</a></p>
 
+## 💬 Device Chat
+
+Select a focused device, switch the sidebar from **Presets** to **Chat**, and
+send a message such as *"What's on screen right now?"* The agent can describe
+the current UI, answer follow-ups, and use the attached phone-control tools when
+you ask it to act. **Stop** ends the current turn; **New chat** clears that
+device's transcript and session.
+
+Chat history is stored per device under
+`~/Library/Application Support/PhoneHub/chats/` and restored on launch. A chat
+turn and a preset run are mutually exclusive so only one agent controls a phone
+at a time.
+
+PhoneHub brings no API key and has no credential store. It shells out to your
+own authenticated CLI session. Phase 1 uses the local `claude` CLI; the Codex
+backend is planned for Phase 2 and will use the local `codex` login when enabled.
+
+> [!CAUTION]
+> Android agent automation depends on `androir-mcp` resolving through npm. If
+> the package is unavailable, Android mirroring still works, but Android chat
+> and presets cannot start their phone-control MCP server. iOS uses
+> `mirroir-mcp`.
+
+<p align="right"><a href="#readme-top">back to top ↑</a></p>
+
 ## 🗺️ Status & roadmap
 
 - [x] Multi-device discovery — iOS (iPhone Mirroring) **and** Android (`adb`)
@@ -144,8 +187,9 @@ it at any time.
 - [x] Mirror menu controls + resync loop (keep docked windows aligned as they move)
 - [x] AI automation presets — plain-English goal → agent loop via `mirroir` /
   `androir`, with a live run log and Stop
+- [x] Per-device chat with streaming replies, Stop, and persisted transcripts
 - [x] Stable self-signed build so the Accessibility grant survives rebuilds
-- [ ] Per-device preset history and saved transcripts
+- [ ] Per-device preset-run history
 - [ ] Scheduling / recurring presets
 - [ ] Richer wall layouts (custom grids, per-tile zoom)
 - [ ] Packaged, notarized `.app` release
