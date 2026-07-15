@@ -5,10 +5,16 @@ public enum AutomationPlanError: Error, Equatable {
     case invalidSerial
 }
 
+public enum AgentBackend: String, Codable, CaseIterable, Sendable {
+    case claude
+    case codex
+}
+
 /// Everything needed to launch the headless `claude` agent for one preset run.
 /// Pure data so it can be built and unit-tested without spawning anything.
 public struct AutomationPlan: Equatable {
-    public let prompt: String           // the goal + device context (user prompt)
+    public let backend: AgentBackend
+    public var prompt: String           // the goal + device context (user prompt)
     public let systemPreamble: String   // appended system prompt
     public let mcpConfigJSON: String    // contents of the --mcp-config file
     public let allowedTools: String     // value for --allowedTools
@@ -18,7 +24,9 @@ public struct AutomationPlan: Equatable {
     /// Full argv passed to the resolved `claude` binary (excludes the binary path).
     /// mcpConfigPath is the temp file the caller has written mcpConfigJSON into.
     public func arguments(mcpConfigPath: String) -> [String] {
-        [
+        switch backend {
+        case .claude:
+            return [
             "-p", prompt,
             "--append-system-prompt", systemPreamble,
             "--output-format", "stream-json",
@@ -27,7 +35,11 @@ public struct AutomationPlan: Equatable {
             "--allowedTools", allowedTools,
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
-        ]
+            ]
+        case .codex:
+            // Phase 2 builds Codex argv after validating the installed CLI.
+            return []
+        }
     }
 
     /// Full argv to RESUME an existing session with the user's reply. Reuses the
@@ -37,7 +49,9 @@ public struct AutomationPlan: Equatable {
     public func resumeArguments(sessionId: String,
                                 reply: String,
                                 mcpConfigPath: String) -> [String] {
-        [
+        switch backend {
+        case .claude:
+            return [
             "--resume", sessionId,
             "-p", reply,
             "--append-system-prompt", systemPreamble,
@@ -47,7 +61,11 @@ public struct AutomationPlan: Equatable {
             "--allowedTools", allowedTools,
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
-        ]
+            ]
+        case .codex:
+            // Phase 2 builds Codex resume argv after CLI validation.
+            return []
+        }
     }
 }
 
@@ -64,65 +82,96 @@ exactly `NEED_INPUT: <your concise question>` and end your turn. You will be \
 resumed with the user's answer.
 """
 
+public let chatSystemPreamble = """
+You are operating a phone through the attached tools, in an interactive chat \
+with the user. Answer conversationally. When the user asks about the screen, \
+look at it with the tools and describe what you see. When asked to act, act \
+with the tools. Use only the attached phone-control tools. If unsure, ask the \
+user instead of guessing — just end your reply with the question.
+"""
+
+private struct PlatformWiring {
+    let server: String
+    let mcpJSON: String
+    let allowedTools: String
+    let deviceContext: String
+}
+
+private func platformWiring(for device: Device) throws -> PlatformWiring {
+    switch device.platform {
+    case .ios:
+        return PlatformWiring(
+            server: "mirroir",
+            mcpJSON: mcpConfig(
+                server: "mirroir",
+                command: "npx",
+                args: ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
+            ),
+            allowedTools: "mcp__mirroir__*",
+            deviceContext: "Platform: iOS."
+        )
+    case .android:
+        guard isValidSerial(device.id) else {
+            throw AutomationPlanError.invalidSerial
+        }
+        return PlatformWiring(
+            server: "androir",
+            mcpJSON: mcpConfig(
+                server: "androir",
+                command: "npx",
+                args: ["-y", "androir-mcp"]
+            ),
+            allowedTools: "mcp__androir__*",
+            deviceContext: "Platform: Android. Device serial: \(device.id). "
+                + "Pass this serial as the `serial` argument to every androir tool call."
+        )
+    }
+}
+
 /// Build the launch plan for a preset on a device. Pure function — no I/O.
 public func buildAutomationPlan(
     preset: Preset,
-    device: Device
+    device: Device,
+    backend: AgentBackend = .claude
 ) throws -> AutomationPlan {
     guard preset.supports(device.platform) else {
         throw AutomationPlanError.platformMismatch
     }
 
-    let serverName: String
-    let mcpConfigJSON: String
-    let allowedTools: String
-    var deviceContext: String
-
-    switch device.platform {
-    case .ios:
-        serverName = "mirroir"
-        allowedTools = "mcp__mirroir__*"
-        // `--dangerously-skip-permissions` here is mirroir-mcp's OWN
-        // device-permission flag (it skips mirroir's per-action prompts), NOT a
-        // flag on the `claude` spawn. Do not remove it as a "security bug".
-        mcpConfigJSON = mcpConfig(
-            server: "mirroir",
-            command: "npx",
-            args: ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
-        )
-        deviceContext = "Platform: iOS."
-    case .android:
-        guard isValidSerial(device.id) else {
-            throw AutomationPlanError.invalidSerial
-        }
-        serverName = "androir"
-        allowedTools = "mcp__androir__*"
-        mcpConfigJSON = mcpConfig(
-            server: "androir",
-            command: "npx",
-            args: ["-y", "androir-mcp"]
-        )
-        // androir takes the serial as a per-tool `serial` argument; tell the
-        // agent to pass it so multi-device setups target the right phone.
-        deviceContext = "Platform: Android. Device serial: \(device.id). "
-            + "Pass this serial as the `serial` argument to every androir tool call."
-    }
+    let wiring = try platformWiring(for: device)
 
     var goal = preset.goal
     if let app = preset.app, !app.isEmpty {
         goal = "First make sure the \(app) app is open. \(goal)"
     }
 
-    let prompt = "\(goal)\n\n\(deviceContext)\n"
+    let prompt = "\(goal)\n\n\(wiring.deviceContext)\n"
         + "You have a hard cap of \(preset.maxSteps) tool calls; stop before exceeding it."
 
     return AutomationPlan(
+        backend: backend,
         prompt: prompt,
         systemPreamble: automationSystemPreamble,
-        mcpConfigJSON: mcpConfigJSON,
-        allowedTools: allowedTools,
+        mcpConfigJSON: wiring.mcpJSON,
+        allowedTools: wiring.allowedTools,
         maxTurns: preset.maxSteps,
-        serverName: serverName
+        serverName: wiring.server
+    )
+}
+
+public func buildChatPlan(
+    device: Device,
+    backend: AgentBackend = .claude
+) throws -> AutomationPlan {
+    let wiring = try platformWiring(for: device)
+    return AutomationPlan(
+        backend: backend,
+        prompt: "",
+        systemPreamble: "\(chatSystemPreamble)\n\n\(wiring.deviceContext)",
+        mcpConfigJSON: wiring.mcpJSON,
+        allowedTools: wiring.allowedTools,
+        maxTurns: 25,
+        serverName: wiring.server
     )
 }
 

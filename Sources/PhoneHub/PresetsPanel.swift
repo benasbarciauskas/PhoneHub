@@ -6,6 +6,7 @@ import PhoneHubCore
 struct PresetsPanel: View {
     @Bindable var store: PresetStore
     var engine: AutomationEngine
+    var chatBusy: Bool
     let focused: Device?
 
     @State private var editing: Preset?
@@ -26,6 +27,7 @@ struct PresetsPanel: View {
     private var canRunCommand: Bool {
         guard let focused, focused.isReady || focused.platform == .ios else { return false }
         return !engine.isBusy
+            && !chatBusy
             && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -51,6 +53,13 @@ struct PresetsPanel: View {
                     .padding(.horizontal, Theme.s2)
                 listView
             }
+
+            Text(SkillsStatus.mirroirSkillsInstalled()
+                 ? "iOS skills: installed ✓"
+                 : "iOS skills: not installed — run scripts/setup-skills.sh")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.subtext)
+                .padding(.horizontal, Theme.s3)
         }
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
@@ -161,7 +170,7 @@ struct PresetsPanel: View {
     private func canRun(_ preset: Preset) -> Bool {
         guard let focused, focused.isReady || focused.platform == .ios else { return false }
         guard preset.supports(focused.platform) else { return false }
-        return !engine.isBusy
+        return !engine.isBusy && !chatBusy
     }
 
     // MARK: - Running

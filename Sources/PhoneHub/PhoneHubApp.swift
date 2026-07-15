@@ -6,11 +6,13 @@ struct PhoneHubApp: App {
     @State private var store = DeviceStore()
     @State private var presetStore = PresetStore()
     @State private var engine = AutomationEngine()
+    @State private var chatEngine = ChatEngine()
 
     var body: some Scene {
         WindowGroup("PhoneHub") {
             HStack(spacing: 0) {
-                Sidebar(store: store, presetStore: presetStore, engine: engine)
+                Sidebar(store: store, presetStore: presetStore,
+                        engine: engine, chatEngine: chatEngine)
                 Divider().overlay(Theme.border)
                 Stage(store: store)
             }
@@ -18,6 +20,7 @@ struct PhoneHubApp: App {
             .background(Theme.bg)
             .preferredColorScheme(.dark)
             .onAppear { store.refresh() }
+            .onDisappear { chatEngine.shutdown() }
         }
         .windowStyle(.hiddenTitleBar)
     }
