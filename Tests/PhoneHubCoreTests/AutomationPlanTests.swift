@@ -30,6 +30,31 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertEqual(plan.backend, AgentBackend.claude)
     }
 
+    func testChatPlanIOSUsesMirroirAndChatPreamble() throws {
+        let plan = try buildChatPlan(device: iosDevice)
+        XCTAssertEqual(plan.backend, .claude)
+        XCTAssertEqual(plan.serverName, "mirroir")
+        XCTAssertEqual(plan.allowedTools, "mcp__mirroir__*")
+        XCTAssertEqual(plan.prompt, "")
+        XCTAssertEqual(plan.maxTurns, 25)
+        XCTAssertTrue(plan.systemPreamble.contains(chatSystemPreamble))
+        XCTAssertTrue(plan.systemPreamble.contains("Platform: iOS."))
+    }
+
+    func testChatPlanAndroidValidatesSerial() {
+        let bad = Device(id: "../bad serial", platform: .android,
+                         model: "Pixel", osVersion: "15", status: "device")
+        XCTAssertThrowsError(try buildChatPlan(device: bad)) {
+            XCTAssertEqual($0 as? AutomationPlanError, .invalidSerial)
+        }
+    }
+
+    func testChatPlanAndroidMentionsSerialInDeviceContextViaPreamble() throws {
+        let plan = try buildChatPlan(device: androidDevice)
+        XCTAssertTrue(plan.systemPreamble.contains("ABC123XYZ"))
+        XCTAssertTrue(plan.systemPreamble.contains("every androir tool call"))
+    }
+
     func testIOSRoutesToMirroir() throws {
         let preset = Preset(name: "Open IG", goal: "open instagram",
                             platforms: [.ios], maxSteps: 25)
