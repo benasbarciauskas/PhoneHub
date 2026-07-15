@@ -62,6 +62,11 @@ struct ChatPanel: View {
 
     private func composer(for device: Device) -> some View {
         VStack(spacing: Theme.s2) {
+            if presetEngine.isBusy {
+                Text("Preset run active")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.subtext)
+            }
             if case let .failed(message) = engine.turnState {
                 Text(message)
                     .font(.system(size: 10))
@@ -73,7 +78,7 @@ struct ChatPanel: View {
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
-                    .disabled(engine.isBusy)
+                    .disabled(engine.isBusy || presetEngine.isBusy)
                     .onSubmit { send(on: device) }
 
                 if engine.isBusy {
@@ -107,14 +112,17 @@ struct ChatPanel: View {
     }
 
     private var canSend: Bool {
-        !engine.isBusy && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !engine.isBusy
+            && !presetEngine.isBusy
+            && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func send(on device: Device) {
         guard canSend else { return }
         let text = input
-        input = ""
-        engine.send(text, on: device, presetEngineBusy: presetEngine.isBusy)
+        if engine.send(text, on: device, presetEngineBusy: presetEngine.isBusy) {
+            input = ""
+        }
     }
 
     private func bindFocusedDevice() {

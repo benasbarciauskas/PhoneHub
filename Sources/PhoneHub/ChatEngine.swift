@@ -16,6 +16,7 @@ final class ChatEngine {
     private(set) var streamingText = ""
 
     private let store: ChatStore
+    private let backendAvailability: (AgentBackend) -> BackendStatus
     private var process: StreamingProcess?
     private var configURL: URL?
     private var boundDeviceId: String?
@@ -28,8 +29,9 @@ final class ChatEngine {
 
     init(store: ChatStore = ChatStore(
         directory: PresetStore.defaultDirectory().appendingPathComponent("chats", isDirectory: true)
-    )) {
+    ), backendAvailability: @escaping (AgentBackend) -> BackendStatus = { BackendAvailability.check($0) }) {
         self.store = store
+        self.backendAvailability = backendAvailability
     }
 
     var isBusy: Bool {
@@ -46,20 +48,21 @@ final class ChatEngine {
         streamingText = ""
     }
 
-    func send(_ text: String, on device: Device, presetEngineBusy: Bool) {
-        guard !isBusy else { return }
+    @discardableResult
+    func send(_ text: String, on device: Device, presetEngineBusy: Bool) -> Bool {
+        guard !isBusy else { return false }
         bind(device: device)
         if presetEngineBusy {
             append(.system, "A preset run is active — wait or stop it.")
-            return
+            return false
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return false }
 
-        let status = BackendAvailability.check(chat.backend)
+        let status = backendAvailability(chat.backend)
         guard case let .available(path) = status else {
             if case let .missing(hint) = status { append(.system, hint) }
-            return
+            return false
         }
 
         let plan: AutomationPlan
@@ -67,7 +70,7 @@ final class ChatEngine {
             plan = try buildChatPlan(device: device, backend: chat.backend)
         } catch {
             fail("Could not prepare chat: \(error)")
-            return
+            return false
         }
 
         append(.user, trimmed)
@@ -77,6 +80,7 @@ final class ChatEngine {
         alreadyRetried = false
         resultFailure = nil
         start(plan: plan, asResume: chat.sessionId != nil)
+        return true
     }
 
     func stop() {
