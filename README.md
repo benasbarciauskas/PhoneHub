@@ -19,7 +19,7 @@
 - **Focus & wall layouts**: watch one phone full-stage, or tile several side by side
 - **AI presets**: name a plain-English goal and a headless agent reads the screen, taps, swipes, and types its way there, recovering from popups
 - **Device chat**: converse with an agent bound to the focused device — ask what's on screen, request actions, keep going back and forth; transcripts persist per device
-- **Bring your own LLM**: PhoneHub shells out to your own local `claude` CLI login (Codex support planned). It never stores or reads API keys or credentials
+- **Bring your own LLM**: choose Claude or Codex; PhoneHub shells out to your local CLI login and never stores or reads API keys or credentials
 - **Local only**: talks exclusively to the phones your Mac already sees; nothing leaves your machine
 
 ## Getting Started
@@ -29,7 +29,7 @@ Requirements:
 - macOS 14+ with Swift / Xcode (or Command Line Tools)
 - Android: `brew install android-platform-tools scrcpy`
 - iOS docking: grant PhoneHub **Accessibility** (System Settings → Privacy & Security → Accessibility)
-- Automation & chat (optional): the `claude` CLI, logged in — agents run through [mirroir](https://github.com/jfarcand/mirroir-mcp) (iOS) and [androir](https://github.com/benasbarciauskas/androir-mcp) (Android) MCP servers, fetched automatically via `npx`
+- Automation & chat (optional): the `claude` or `codex` CLI, logged in — agents run through [mirroir](https://github.com/jfarcand/mirroir-mcp) (iOS) and [androir](https://github.com/benasbarciauskas/androir-mcp) (Android) MCP servers, fetched automatically via `npx`
 
 Build and run:
 
@@ -66,7 +66,9 @@ Switch the sidebar from **Presets** to **Chat** and talk to an agent bound to th
 
 Every message continues the same agent session, so context carries across turns. History is stored per device under `~/Library/Application Support/PhoneHub/chats/` and restored on launch. A chat turn and a preset run are mutually exclusive — one agent controls a phone at a time. **Stop** ends the current turn; **New chat** starts fresh.
 
-PhoneHub has no credential store and brings no API key: it uses whatever `claude` login already exists on your Mac.
+Choose Claude or Codex from the sidebar gear menu. Presets can inherit that app default or override it in the preset editor; chat always uses the app default. Changing backends keeps the transcript but starts a fresh CLI session on the next message because sessions cannot transfer between backends.
+
+PhoneHub has no credential store and brings no API key: it uses whichever local `claude` or `codex` CLI login you selected.
 
 ## PhoneDrop
 
@@ -86,7 +88,7 @@ One-time phone setup: install Tailscale (always-on VPN, battery-optimization exc
 - [x] Native mirroring and docking, focus and wall layouts
 - [x] AI presets with live log, Stop, and interactive resume
 - [x] Per-device chat with streaming replies and persisted transcripts
-- [ ] Codex backend (`codex` CLI) as an alternative to `claude`
+- [x] Codex backend (`codex` CLI) as an alternative to `claude`
 - [ ] Per-device preset-run history
 - [ ] Scheduling / recurring presets
 - [ ] Richer wall layouts (custom grids, per-tile zoom)

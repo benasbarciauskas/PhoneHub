@@ -6,6 +6,7 @@ struct Sidebar: View {
     @Bindable var presetStore: PresetStore
     var engine: AutomationEngine
     var chatEngine: ChatEngine
+    @Binding var agentBackend: AgentBackend
 
     @State private var lowerPanel: LowerPanel = .presets
 
@@ -24,6 +25,17 @@ struct Sidebar: View {
                 .frame(width: 112)
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.plain).foregroundStyle(Theme.subtext)
+                Menu {
+                    Picker("Agent backend", selection: $agentBackend) {
+                        ForEach(AgentBackend.allCases, id: \.self) { backend in
+                            Text(backend.rawValue.capitalized).tag(backend)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .menuStyle(.borderlessButton)
+                .foregroundStyle(Theme.subtext)
             }
             .padding(.horizontal, Theme.s3).padding(.top, Theme.s3)
 
@@ -62,11 +74,12 @@ struct Sidebar: View {
             case .presets:
                 ScrollView {
                     PresetsPanel(store: presetStore, engine: engine,
-                                 chatBusy: chatEngine.isBusy, focused: store.focusedDevice)
+                                 chatBusy: chatEngine.isBusy, focused: store.focusedDevice,
+                                 agentBackend: agentBackend)
                 }
             case .chat:
                 ChatPanel(engine: chatEngine, presetEngine: engine,
-                          focused: store.focusedDevice)
+                          focused: store.focusedDevice, backend: agentBackend)
             }
         }
         .frame(width: 240)

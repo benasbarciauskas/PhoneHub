@@ -5,6 +5,7 @@ struct ChatPanel: View {
     var engine: ChatEngine
     var presetEngine: AutomationEngine
     let focused: Device?
+    let backend: AgentBackend
 
     @State private var input = ""
 
@@ -120,7 +121,8 @@ struct ChatPanel: View {
     private func send(on device: Device) {
         guard canSend else { return }
         let text = input
-        if engine.send(text, on: device, presetEngineBusy: presetEngine.isBusy) {
+        if engine.send(text, on: device, backend: backend,
+                       presetEngineBusy: presetEngine.isBusy) {
             input = ""
         }
     }

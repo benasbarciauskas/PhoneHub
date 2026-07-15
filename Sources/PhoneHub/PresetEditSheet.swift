@@ -14,6 +14,7 @@ struct PresetEditSheet: View {
     @State private var ios: Bool
     @State private var android: Bool
     @State private var maxSteps: Int
+    @State private var backend: AgentBackend?
     @State private var refineError: String?
 
     /// - Parameter prefillGoal: used (when there's no `preset`) to seed the Goal
@@ -31,6 +32,7 @@ struct PresetEditSheet: View {
         _ios = State(initialValue: preset?.platforms.contains(.ios) ?? true)
         _android = State(initialValue: preset?.platforms.contains(.android) ?? true)
         _maxSteps = State(initialValue: preset?.maxSteps ?? 40)
+        _backend = State(initialValue: preset?.backend)
     }
 
     private var canSave: Bool {
@@ -78,6 +80,15 @@ struct PresetEditSheet: View {
             field("Max steps") {
                 Stepper("\(maxSteps)", value: $maxSteps, in: 1...200, step: 5)
             }
+            field("Agent backend") {
+                Picker("Agent backend", selection: $backend) {
+                    Text("App default").tag(nil as AgentBackend?)
+                    ForEach(AgentBackend.allCases, id: \.self) { choice in
+                        Text(choice.rawValue.capitalized).tag(Optional(choice))
+                    }
+                }
+                .labelsHidden()
+            }
 
             HStack {
                 Spacer()
@@ -93,7 +104,8 @@ struct PresetEditSheet: View {
                         app: app.trimmingCharacters(in: .whitespaces).isEmpty ? nil
                             : app.trimmingCharacters(in: .whitespaces),
                         platforms: platforms,
-                        maxSteps: maxSteps
+                        maxSteps: maxSteps,
+                        backend: backend
                     )
                     onSave(result)
                     dismiss()

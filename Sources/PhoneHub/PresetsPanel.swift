@@ -8,6 +8,7 @@ struct PresetsPanel: View {
     var engine: AutomationEngine
     var chatBusy: Bool
     let focused: Device?
+    let agentBackend: AgentBackend
 
     @State private var editing: Preset?
     @State private var showingSheet = false
@@ -86,7 +87,7 @@ struct PresetsPanel: View {
                     if let device = focused {
                         let goal = command
                         command = ""
-                        engine.runAdhoc(goal: goal, on: device)
+                        engine.runAdhoc(goal: goal, on: device, backend: agentBackend)
                     }
                 } label: {
                     Label("Run", systemImage: "play.fill").font(.system(size: 11, weight: .semibold))
@@ -157,7 +158,11 @@ struct PresetsPanel: View {
                 PresetRow(
                     preset: preset,
                     canRun: canRun(preset),
-                    onRun: { if let device = focused { engine.run(preset: preset, on: device) } },
+                    onRun: {
+                        if let device = focused {
+                            engine.run(preset: preset, on: device, backend: agentBackend)
+                        }
+                    },
                     onEdit: { editing = preset; prefillGoal = ""; showingSheet = true },
                     onDuplicate: { store.duplicate(preset) },
                     onDelete: { store.delete(preset) }

@@ -47,4 +47,14 @@ final class CodexStreamParserTests: XCTestCase {
         XCTAssertEqual(CodexStreamParser.parseLine("not json"), .ignored)
         XCTAssertEqual(CodexStreamParser.parseLine(#"{"type":"reasoning"}"#), .ignored)
     }
+
+    func testSharedParserDispatchesByBackend() {
+        let codex = #"{"type":"thread.started","thread_id":"codex-session"}"#
+        XCTAssertEqual(parseStreamLine(codex, backend: .codex),
+                       .system(subtype: "init", sessionId: "codex-session"))
+
+        let claude = #"{"type":"system","subtype":"init","session_id":"claude-session"}"#
+        XCTAssertEqual(parseStreamLine(claude, backend: .claude),
+                       .system(subtype: "init", sessionId: "claude-session"))
+    }
 }
