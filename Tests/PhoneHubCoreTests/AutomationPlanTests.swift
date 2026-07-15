@@ -30,6 +30,38 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertEqual(plan.backend, AgentBackend.claude)
     }
 
+    func testCodexInitialArguments() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
+        let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: .codex)
+
+        XCTAssertEqual(plan.arguments(mcpConfigPath: "/tmp/unused.json"), [
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            "-s", "read-only",
+            "-c", "mcp_servers.mirroir.command=npx",
+            "-c", "mcp_servers.mirroir.args=[\"-y\",\"mirroir-mcp\",\"--dangerously-skip-permissions\"]",
+            "-c", "mcp_servers.mirroir.default_tools_approval_mode=\"approve\"",
+            "\(plan.systemPreamble)\n\n\(plan.prompt)"
+        ])
+    }
+
+    func testCodexResumeArguments() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.android], maxSteps: 10)
+        let plan = try buildAutomationPlan(preset: preset, device: androidDevice, backend: .codex)
+
+        XCTAssertEqual(plan.resumeArguments(sessionId: "019f-session",
+                                             reply: "continue",
+                                             mcpConfigPath: "/tmp/unused.json"), [
+            "exec", "resume", "019f-session",
+            "--json",
+            "-c", "mcp_servers.androir.command=npx",
+            "-c", "mcp_servers.androir.args=[\"-y\",\"androir-mcp\"]",
+            "-c", "mcp_servers.androir.default_tools_approval_mode=\"approve\"",
+            "continue"
+        ])
+    }
+
     func testChatPlanIOSUsesMirroirAndChatPreamble() throws {
         let plan = try buildChatPlan(device: iosDevice)
         XCTAssertEqual(plan.backend, .claude)
