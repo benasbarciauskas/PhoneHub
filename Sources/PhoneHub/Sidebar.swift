@@ -5,6 +5,9 @@ struct Sidebar: View {
     @Bindable var store: DeviceStore
     @Bindable var presetStore: PresetStore
     var engine: AutomationEngine
+    var chatEngine: ChatEngine
+
+    @State private var lowerPanel: LowerPanel = .presets
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -47,13 +50,33 @@ struct Sidebar: View {
 
             Divider().overlay(Theme.border).padding(.horizontal, Theme.s3)
 
-            ScrollView {
-                PresetsPanel(store: presetStore, engine: engine, focused: store.focusedDevice)
+            Picker("Panel", selection: $lowerPanel) {
+                Text("Presets").tag(LowerPanel.presets)
+                Text("Chat").tag(LowerPanel.chat)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, Theme.s3)
+
+            switch lowerPanel {
+            case .presets:
+                ScrollView {
+                    PresetsPanel(store: presetStore, engine: engine,
+                                 chatBusy: chatEngine.isBusy, focused: store.focusedDevice)
+                }
+            case .chat:
+                ChatPanel(engine: chatEngine, presetEngine: engine,
+                          focused: store.focusedDevice)
             }
         }
         .frame(width: 240)
         .background(Theme.surface)
     }
+}
+
+private enum LowerPanel: Hashable {
+    case presets
+    case chat
 }
 
 private struct DeviceRow: View {
