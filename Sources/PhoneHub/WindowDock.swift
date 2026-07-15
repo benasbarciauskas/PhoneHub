@@ -76,30 +76,13 @@ func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) thr
         throw WindowDockError.windowSizeUnavailable(ownerName)
     }
 
-    let inset: CGFloat = 12
-    let insetX = min(inset, max(0, rect.width / 2))
-    let insetY = min(inset, max(0, rect.height / 2))
-    let targetSize = rect.insetBy(dx: insetX, dy: insetY).size
-    var finalSize = mirrorSize
-    if exceedsTarget(finalSize, target: targetSize) {
-        let constrainedSize = aspectFitSize(finalSize, within: targetSize)
-        guard constrainedSize.width > 0,
-              constrainedSize.height > 0,
-              setAXSize(window, to: constrainedSize),
-              let verifiedSize = readAXSize(window),
-              !exceedsTarget(verifiedSize, target: targetSize) else {
-            throw WindowDockError.setFrameFailed
-        }
-        finalSize = verifiedSize
-    }
-
-    let centeredRect = centeredRect(forContentSize: finalSize, within: rect, inset: inset)
+    let centeredRect = centeredRect(forContentSize: mirrorSize, within: rect, inset: 12)
     guard repositionAXWindowIfNeeded(window, to: centeredRect.origin) else {
         throw WindowDockError.setFrameFailed
     }
 
     trackDockedIPhoneMirroringWindow(processIdentifier: app.processIdentifier)
-    return finalSize
+    return mirrorSize
 }
 
 @MainActor
@@ -269,28 +252,25 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         throw WindowDockError.setFrameFailed
     }
 
-    if !sizesAreEffectivelyEqual(currentSize, constrainedSize) {
-        guard setAXSize(window, to: constrainedSize) else {
-            throw WindowDockError.setFrameFailed
-        }
+    let attemptedAXResize = !sizesAreEffectivelyEqual(currentSize, constrainedSize)
+    let axWriteSucceeded = !attemptedAXResize || setAXSize(window, to: constrainedSize)
+    let readBackSize = readAXSize(window)
+    let decision = finalMirrorSizeAfterBestEffortAXResize(
+        menuSize: currentSize,
+        requestedSize: constrainedSize,
+        readBackSize: readBackSize
+    )
+
+    if attemptedAXResize, !axWriteSucceeded {
+        NSLog("PhoneHub iPhone Mirroring AX resize write failed for requested size %@; continuing with menu size %@",
+              NSStringFromSize(constrainedSize), NSStringFromSize(decision.finalSize))
+    } else if attemptedAXResize, decision.resizeWasIgnored {
+        NSLog("PhoneHub iPhone Mirroring ignored AX resize: wrote %@, read back %@; continuing with View-menu size",
+              NSStringFromSize(constrainedSize),
+              readBackSize.map(NSStringFromSize) ?? "unavailable")
     }
 
-    guard var finalSize = readAXSize(window) else {
-        throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
-    }
-    if exceedsTarget(finalSize, target: targetSize) {
-        let retrySize = aspectFitSize(finalSize, within: targetSize)
-        guard retrySize.width > 0,
-              retrySize.height > 0,
-              setAXSize(window, to: retrySize),
-              let verifiedSize = readAXSize(window),
-              !exceedsTarget(verifiedSize, target: targetSize) else {
-            throw WindowDockError.setFrameFailed
-        }
-        finalSize = verifiedSize
-    }
-
-    let dockedSize = try centerAXWindow(window, size: finalSize, in: rect)
+    let dockedSize = try centerAXWindow(window, size: decision.finalSize, in: rect)
     trackDockedIPhoneMirroringWindow(processIdentifier: pid)
     return dockedSize
 }

@@ -32,6 +32,26 @@ final class StageGeometryTests: XCTestCase {
                        CGSize(width: 272.41379310344826, height: 600))
     }
 
+    func testFinalMirrorSizeUsesSmallestMenuSizeWhenAXResizeIsIgnored() {
+        let smallestMenuSize = CGSize(width: 316, height: 696)
+        let requestedAXSize = aspectFitSize(smallestMenuSize,
+                                            within: CGSize(width: 280, height: 600))
+
+        XCTAssertEqual(finalMirrorSizeAfterBestEffortAXResize(
+            menuSize: smallestMenuSize,
+            requestedSize: requestedAXSize,
+            readBackSize: smallestMenuSize
+        ), MirrorAXResizeDecision(finalSize: smallestMenuSize, resizeWasIgnored: true))
+    }
+
+    func testAspectFitSizeNeverExceedsTarget() {
+        let target = CGSize(width: 280, height: 600)
+        let fittedSize = aspectFitSize(CGSize(width: 1_000, height: 700), within: target)
+
+        XCTAssertLessThanOrEqual(fittedSize.width, target.width)
+        XCTAssertLessThanOrEqual(fittedSize.height, target.height)
+    }
+
     func testFitStepShrinksWhenCurrentWidthIsLargerThanTarget() {
         XCTAssertEqual(fitStep(current: CGSize(width: 401, height: 600),
                                target: CGSize(width: 400, height: 700)),
