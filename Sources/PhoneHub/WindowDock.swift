@@ -68,14 +68,13 @@ func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) thr
     AXUIElementSetMessagingTimeout(window, 0.4)
     AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
     AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, false as CFTypeRef)
-    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
 
     guard let mirrorSize = readAXSize(window) else {
         throw WindowDockError.windowSizeUnavailable(ownerName)
     }
 
     let centeredRect = centeredRect(forContentSize: mirrorSize, within: rect, inset: 12)
-    guard setAXPosition(window, to: centeredRect.origin) else {
+    guard repositionAXWindowIfNeeded(window, to: centeredRect.origin) else {
         throw WindowDockError.setFrameFailed
     }
 
@@ -258,6 +257,22 @@ private func readAXSize(_ window: AXUIElement) -> CGSize? {
     return size
 }
 
+private func readAXPosition(_ window: AXUIElement) -> CGPoint? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &value) == .success,
+          let value,
+          CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+
+    let axValue = value as! AXValue
+    var position = CGPoint.zero
+    guard AXValueGetValue(axValue, .cgPoint, &position) else {
+        return nil
+    }
+    return position
+}
+
 private func readAXTitle(_ window: AXUIElement) -> String? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else {
@@ -282,6 +297,17 @@ private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
     }
 
     return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) == .success
+}
+
+/// Keep raise on the same deduplicated path as the AX position write. Raising
+/// after the write restores z-order without activating PhoneHub or opening menus.
+private func repositionAXWindowIfNeeded(_ window: AXUIElement, to point: CGPoint) -> Bool {
+    guard shouldRepositionWindow(current: readAXPosition(window), target: point, tolerance: 1) else {
+        return true
+    }
+    guard setAXPosition(window, to: point) else { return false }
+    _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    return true
 }
 
 private func copyAXAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
@@ -315,7 +341,7 @@ private func firstWindow(in appElement: AXUIElement) -> AXUIElement? {
 
 private func centerAXWindow(_ window: AXUIElement, size: CGSize, in rect: CGRect) throws -> CGSize {
     let centeredRect = centeredRect(forContentSize: size, within: rect, inset: 12)
-    guard setAXPosition(window, to: centeredRect.origin) else {
+    guard repositionAXWindowIfNeeded(window, to: centeredRect.origin) else {
         throw WindowDockError.setFrameFailed
     }
     return size

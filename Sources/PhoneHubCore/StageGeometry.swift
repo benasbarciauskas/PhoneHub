@@ -36,6 +36,13 @@ public func rectsEffectivelyEqual(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFlo
         abs(lhs.height - rhs.height) <= tolerance
 }
 
+/// Whether an AX window needs a real reposition. A missing current position is
+/// treated as movable; sub-point layout jitter is ignored.
+public func shouldRepositionWindow(current: CGPoint?, target: CGPoint, tolerance: CGFloat) -> Bool {
+    guard let current else { return true }
+    return abs(current.x - target.x) > tolerance || abs(current.y - target.y) > tolerance
+}
+
 public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, spacing: CGFloat) -> [CGRect] {
     guard count > 0, container.width > 0, container.height > 0 else { return [] }
 

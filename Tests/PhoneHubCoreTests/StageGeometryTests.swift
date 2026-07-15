@@ -105,6 +105,24 @@ final class StageGeometryTests: XCTestCase {
         XCTAssertTrue(rectsEffectivelyEqual(lhs, rhs, tolerance: 1))
     }
 
+    func testShouldRepositionWindowWhenCurrentPositionIsUnavailable() {
+        XCTAssertTrue(shouldRepositionWindow(current: nil,
+                                             target: CGPoint(x: 100, y: 200),
+                                             tolerance: 1))
+    }
+
+    func testShouldRepositionWindowIgnoresOnePointJitter() {
+        XCTAssertFalse(shouldRepositionWindow(current: CGPoint(x: 100, y: 200),
+                                              target: CGPoint(x: 101, y: 199),
+                                              tolerance: 1))
+    }
+
+    func testShouldRepositionWindowForMoveGreaterThanTolerance() {
+        XCTAssertTrue(shouldRepositionWindow(current: CGPoint(x: 100, y: 200),
+                                             target: CGPoint(x: 101.1, y: 200),
+                                             tolerance: 1))
+    }
+
     func testGridTileRectsForRequestedCounts() {
         [1, 2, 4, 5, 9].forEach { count in
             assertGridTileRects(count: count)
