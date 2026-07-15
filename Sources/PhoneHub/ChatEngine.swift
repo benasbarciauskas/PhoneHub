@@ -72,6 +72,10 @@ final class ChatEngine {
             fail("Could not prepare chat: \(error)")
             return false
         }
+        guard plan.backend == .claude else {
+            append(.system, "The codex backend isn't available yet — coming in Phase 2.")
+            return false
+        }
 
         append(.user, trimmed)
         currentPlan = plan
