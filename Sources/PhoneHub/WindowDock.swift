@@ -2,6 +2,9 @@ import AppKit
 import ApplicationServices
 import PhoneHubCore
 
+@MainActor
+private var dockedIPhoneMirroringProcessIDs: Set<pid_t> = []
+
 enum WindowDockError: LocalizedError {
     case accessibilityNotTrusted
     case appNotFound(String)
@@ -78,6 +81,7 @@ func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) thr
         throw WindowDockError.setFrameFailed
     }
 
+    trackDockedIPhoneMirroringWindow(processIdentifier: app.processIdentifier)
     return mirrorSize
 }
 
@@ -269,7 +273,36 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         finalSize = verifiedSize
     }
 
-    return try centerAXWindow(window, size: finalSize, in: rect)
+    let dockedSize = try centerAXWindow(window, size: finalSize, in: rect)
+    trackDockedIPhoneMirroringWindow(processIdentifier: pid)
+    return dockedSize
+}
+
+@MainActor
+func raiseDockedIPhoneMirroringWindows() {
+    guard isAccessibilityTrusted() else { return }
+
+    var staleProcessIDs: Set<pid_t> = []
+    for processIdentifier in dockedIPhoneMirroringProcessIDs {
+        let appElement = AXUIElementCreateApplication(processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.2)
+        guard let window = firstWindow(in: appElement),
+              AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else {
+            staleProcessIDs.insert(processIdentifier)
+            continue
+        }
+    }
+    dockedIPhoneMirroringProcessIDs.subtract(staleProcessIDs)
+}
+
+@MainActor
+func clearDockedIPhoneMirroringWindows() {
+    dockedIPhoneMirroringProcessIDs.removeAll()
+}
+
+@MainActor
+private func trackDockedIPhoneMirroringWindow(processIdentifier: pid_t) {
+    dockedIPhoneMirroringProcessIDs.insert(processIdentifier)
 }
 
 private func exceedsTarget(_ size: CGSize, target: CGSize) -> Bool {

@@ -58,6 +58,7 @@ final class MirroringController {
     }
 
     func stop() {
+        clearDockedIPhoneMirroringWindows()
         findIPhoneMirroringApp()?.terminate()
     }
 }
