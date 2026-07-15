@@ -154,10 +154,17 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
     }
 
-    let targetSize = rect.size
-    let maxIterations = 14
+    let inset: CGFloat = 12
+    let insetX = min(inset, max(0, rect.width / 2))
+    let insetY = min(inset, max(0, rect.height / 2))
+    let targetSize = rect.insetBy(dx: insetX, dy: insetY).size
+    NSLog("PhoneHub fitting iPhone Mirroring into stage rect %@ (content target %@)",
+          NSStringFromRect(rect), NSStringFromSize(targetSize))
+
+    let maxIterations = 64
     var iterationCount = 0
     var seenSizes: Set<String> = [roundedSizeKey(currentSize)]
+    var observedSizes: [CGSize] = [currentSize]
 
     func pressAndRead(_ actionName: String) async throws -> CGSize? {
         guard pressViewMenuItem(pid: pid, named: actionName) else {
@@ -169,7 +176,11 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
     }
 
     func recordSeenSize(_ size: CGSize) -> Bool {
-        seenSizes.insert(roundedSizeKey(size)).inserted
+        let inserted = seenSizes.insert(roundedSizeKey(size)).inserted
+        if inserted {
+            observedSizes.append(size)
+        }
+        return inserted
     }
 
     while exceedsTarget(currentSize, target: targetSize), iterationCount < maxIterations {
@@ -189,6 +200,7 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
             if exceedsTarget(currentSize, target: targetSize),
                let smallerSize = try await pressAndRead("Smaller") {
                 currentSize = smallerSize
+                _ = recordSeenSize(smallerSize)
             }
             break
         }
@@ -228,7 +240,36 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         }
     }
 
-    return try centerAXWindow(window, size: currentSize, in: rect)
+    guard let selectedMenuSize = selectFinalMirrorMenuSize(from: observedSizes, target: targetSize) else {
+        throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
+    }
+    let constrainedSize = aspectFitSize(selectedMenuSize, within: targetSize)
+    guard constrainedSize.width > 0, constrainedSize.height > 0 else {
+        throw WindowDockError.setFrameFailed
+    }
+
+    if !sizesAreEffectivelyEqual(currentSize, constrainedSize) {
+        guard setAXSize(window, to: constrainedSize) else {
+            throw WindowDockError.setFrameFailed
+        }
+    }
+
+    guard var finalSize = readAXSize(window) else {
+        throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
+    }
+    if exceedsTarget(finalSize, target: targetSize) {
+        let retrySize = aspectFitSize(finalSize, within: targetSize)
+        guard retrySize.width > 0,
+              retrySize.height > 0,
+              setAXSize(window, to: retrySize),
+              let verifiedSize = readAXSize(window),
+              !exceedsTarget(verifiedSize, target: targetSize) else {
+            throw WindowDockError.setFrameFailed
+        }
+        finalSize = verifiedSize
+    }
+
+    return try centerAXWindow(window, size: finalSize, in: rect)
 }
 
 private func exceedsTarget(_ size: CGSize, target: CGSize) -> Bool {

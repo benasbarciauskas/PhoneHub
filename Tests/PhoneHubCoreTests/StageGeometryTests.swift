@@ -3,6 +3,35 @@ import XCTest
 @testable import PhoneHubCore
 
 final class StageGeometryTests: XCTestCase {
+    func testFinalMirrorMenuSizeSelectsLargestObservedSizeThatFits() {
+        let sizes = [
+            CGSize(width: 280, height: 620),
+            CGSize(width: 316, height: 696),
+            CGSize(width: 406, height: 890),
+        ]
+
+        XCTAssertEqual(selectFinalMirrorMenuSize(from: sizes,
+                                                 target: CGSize(width: 380, height: 760)),
+                       CGSize(width: 316, height: 696))
+    }
+
+    func testFinalMirrorMenuSizeSelectsSmallestObservedSizeWhenNoneFit() {
+        let sizes = [
+            CGSize(width: 316, height: 696),
+            CGSize(width: 406, height: 890),
+        ]
+
+        XCTAssertEqual(selectFinalMirrorMenuSize(from: sizes,
+                                                 target: CGSize(width: 280, height: 600)),
+                       CGSize(width: 316, height: 696))
+    }
+
+    func testAspectFitSizeConstrainsOversizeMirrorWithoutDistortion() {
+        XCTAssertEqual(aspectFitSize(CGSize(width: 316, height: 696),
+                                     within: CGSize(width: 280, height: 600)),
+                       CGSize(width: 272.41379310344826, height: 600))
+    }
+
     func testFitStepShrinksWhenCurrentWidthIsLargerThanTarget() {
         XCTAssertEqual(fitStep(current: CGSize(width: 401, height: 600),
                                target: CGSize(width: 400, height: 700)),
