@@ -113,6 +113,76 @@ final class AutomationPlanTests: XCTestCase {
         ])
     }
 
+    func testDisabledPolicyDeniesCaptureToolsForClaudeInitialAndResume() throws {
+        let plan = try buildChatPlan(
+            device: iosDevice,
+            screenCapturePolicy: .disabled
+        )
+        let denied = "mcp__mirroir__screenshot,"
+            + "mcp__mirroir__start_recording,"
+            + "mcp__mirroir__stop_recording"
+
+        let initial = plan.arguments(mcpConfigPath: "/tmp/cfg.json")
+        XCTAssertEqual(initial[initial.firstIndex(of: "--disallowedTools")! + 1], denied)
+
+        let resumed = plan.resumeArguments(
+            sessionId: "session", reply: "continue", mcpConfigPath: "/tmp/cfg.json"
+        )
+        XCTAssertEqual(resumed[resumed.firstIndex(of: "--disallowedTools")! + 1], denied)
+        XCTAssertTrue(plan.systemPreamble.contains("use describe_screen only"))
+    }
+
+    func testDisabledPolicyDeniesCaptureToolsForCodexInitialAndResume() throws {
+        let plan = try buildChatPlan(
+            device: androidDevice,
+            backend: .codex,
+            screenCapturePolicy: .disabled
+        )
+        let denied = "mcp_servers.androir.disabled_tools="
+            + "[\"screenshot\",\"start_recording\",\"stop_recording\"]"
+
+        XCTAssertTrue(plan.arguments(mcpConfigPath: "/tmp/unused").contains(denied))
+        XCTAssertTrue(plan.resumeArguments(
+            sessionId: "session", reply: "continue", mcpConfigPath: "/tmp/unused"
+        ).contains(denied))
+    }
+
+    func testActivePoliciesDoNotAddCaptureDenyArguments() throws {
+        for policy in [ScreenCapturePolicy.duringRunsOnly, .always] {
+            let claude = try buildChatPlan(
+                device: iosDevice,
+                screenCapturePolicy: policy,
+                isRunActive: true
+            )
+            XCTAssertFalse(claude.arguments(mcpConfigPath: "/tmp/cfg").contains(
+                "--disallowedTools"
+            ))
+
+            let codex = try buildChatPlan(
+                device: iosDevice,
+                backend: .codex,
+                screenCapturePolicy: policy,
+                isRunActive: true
+            )
+            XCTAssertFalse(codex.arguments(mcpConfigPath: "/tmp/cfg").contains {
+                $0.contains("disabled_tools")
+            })
+        }
+    }
+
+    func testDuringRunsOnlyDeniesCaptureWhenRunIsInactive() throws {
+        let plan = try buildChatPlan(
+            device: iosDevice,
+            screenCapturePolicy: .duringRunsOnly,
+            isRunActive: false
+        )
+
+        XCTAssertFalse(plan.screenCaptureDecision.allowsCapture)
+        XCTAssertTrue(plan.arguments(mcpConfigPath: "/tmp/cfg").contains(
+            "--disallowedTools"
+        ))
+    }
+
     func testChatPlanIOSUsesMirroirAndChatPreamble() throws {
         let plan = try buildChatPlan(device: iosDevice)
         XCTAssertEqual(plan.backend, .claude)
