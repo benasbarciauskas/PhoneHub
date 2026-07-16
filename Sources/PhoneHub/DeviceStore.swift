@@ -22,6 +22,9 @@ final class DeviceStore {
     var devices: [Device] = []
     var focusedDevice: Device?
     var layout: StageLayout = .focus
+    var wallGridPreset: WallGridPreset = .auto
+    var wallTileOrder: [String: Int] = [:]
+    var wallZoomByDeviceID: [String: CGFloat] = [:]
     var toolMissing = false
     private var removedDeviceIDs: Set<String> = []
     private var customNames: [String: String] = [:]

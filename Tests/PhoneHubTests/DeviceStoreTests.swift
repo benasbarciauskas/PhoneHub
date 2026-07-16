@@ -101,4 +101,36 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertEqual(store.devices.first?.model, "iPhone 16 Pro")
         XCTAssertEqual(store.displayName(for: store.devices[0]), "Personal Phone")
     }
+
+    func testWallLayoutStateIsKeptInMemoryAcrossDiscovery() throws {
+        let store = DeviceStore(directory: try temporaryDirectory())
+        store.wallGridPreset = .threeByTwo
+        store.wallTileOrder = ["pixel": 1, "iphone": 0]
+        store.wallZoomByDeviceID = ["pixel": 0.6]
+
+        store.applyDiscovery([
+            Device(id: "pixel", platform: .android, model: "Pixel",
+                   osVersion: "16", status: "device"),
+            Device(id: "iphone", platform: .ios, model: "iPhone",
+                   osVersion: "18", status: "connected"),
+        ])
+
+        XCTAssertEqual(store.wallGridPreset, .threeByTwo)
+        XCTAssertEqual(store.wallTileOrder, ["pixel": 1, "iphone": 0])
+        XCTAssertEqual(store.wallZoomByDeviceID, ["pixel": 0.6])
+    }
+
+    func testWallLayoutStateIsNotPersisted() throws {
+        let directory = try temporaryDirectory()
+        let store = DeviceStore(directory: directory)
+        store.wallGridPreset = .row
+        store.wallTileOrder = ["pixel": 3]
+        store.wallZoomByDeviceID = ["pixel": 0.5]
+
+        let reopened = DeviceStore(directory: directory)
+
+        XCTAssertEqual(reopened.wallGridPreset, .auto)
+        XCTAssertTrue(reopened.wallTileOrder.isEmpty)
+        XCTAssertTrue(reopened.wallZoomByDeviceID.isEmpty)
+    }
 }

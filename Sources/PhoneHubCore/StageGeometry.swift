@@ -8,6 +8,32 @@ public enum FitStep: Equatable, Sendable {
     case fits
 }
 
+public enum WallGridPreset: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case twoByTwo
+    case threeByTwo
+    case row
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .auto: return "Auto"
+        case .twoByTwo: return "2x2"
+        case .threeByTwo: return "3x2"
+        case .row: return "Row"
+        }
+    }
+
+    public var capacity: Int {
+        switch self {
+        case .auto, .row: return 9
+        case .twoByTwo: return 4
+        case .threeByTwo: return 6
+        }
+    }
+}
+
 /// Chooses the best discrete View-menu size observed during one fit pass.
 /// If the menu cannot produce a fitting size, the smallest observed size is
 /// returned so the AppKit layer can attempt a final best-effort aspect fit.
@@ -129,4 +155,74 @@ public func gridTileRects(count: Int, within container: CGRect, inset: CGFloat, 
                       width: tileWidth,
                       height: tileHeight)
     }
+}
+
+public func gridTileRects(count: Int,
+                          preset: WallGridPreset,
+                          within container: CGRect,
+                          inset: CGFloat,
+                          spacing: CGFloat) -> [CGRect] {
+    guard preset != .auto else {
+        return gridTileRects(count: count, within: container, inset: inset, spacing: spacing)
+    }
+    guard count > 0, container.width > 0, container.height > 0 else { return [] }
+
+    let tileCount = min(count, preset.capacity)
+    let dimensions: (columns: Int, rows: Int)
+    switch preset {
+    case .auto:
+        return []
+    case .twoByTwo:
+        dimensions = (2, 2)
+    case .threeByTwo:
+        dimensions = (3, 2)
+    case .row:
+        dimensions = (tileCount, 1)
+    }
+
+    let clampedInset = max(0, inset)
+    let clampedSpacing = max(0, spacing)
+    let insetX = min(clampedInset, max(0, container.width / 2))
+    let insetY = min(clampedInset, max(0, container.height / 2))
+    let available = container.insetBy(dx: insetX, dy: insetY)
+    let totalSpacingX = clampedSpacing * CGFloat(dimensions.columns - 1)
+    let totalSpacingY = clampedSpacing * CGFloat(dimensions.rows - 1)
+    let tileWidth = max(0, (available.width - totalSpacingX) / CGFloat(dimensions.columns))
+    let tileHeight = max(0, (available.height - totalSpacingY) / CGFloat(dimensions.rows))
+
+    return (0..<tileCount).map { index in
+        let row = index / dimensions.columns
+        let column = index % dimensions.columns
+        return CGRect(x: available.minX + CGFloat(column) * (tileWidth + clampedSpacing),
+                      y: available.minY + CGFloat(row) * (tileHeight + clampedSpacing),
+                      width: tileWidth,
+                      height: tileHeight)
+    }
+}
+
+public func swapSlots(order: [String: Int], from: String, to: String) -> [String: Int] {
+    guard let fromSlot = order[from], let toSlot = order[to] else { return order }
+    var swapped = order
+    swapped[from] = toSlot
+    swapped[to] = fromSlot
+    return swapped
+}
+
+public func zoomedTileRect(in tile: CGRect, scale: CGFloat, minimumScale: CGFloat = 0.35) -> CGRect {
+    let lowerBound = min(1, max(0, minimumScale))
+    let clampedScale = min(1, max(lowerBound, scale))
+    let size = CGSize(width: max(0, tile.width) * clampedScale,
+                      height: max(0, tile.height) * clampedScale)
+    return CGRect(x: tile.midX - size.width / 2,
+                  y: tile.midY - size.height / 2,
+                  width: size.width,
+                  height: size.height)
+}
+
+public func tileContentRect(in tile: CGRect, footerHeight: CGFloat) -> CGRect {
+    let reservedHeight = min(max(0, footerHeight), max(0, tile.height))
+    return CGRect(x: tile.minX,
+                  y: tile.minY,
+                  width: max(0, tile.width),
+                  height: max(0, tile.height) - reservedHeight)
 }
