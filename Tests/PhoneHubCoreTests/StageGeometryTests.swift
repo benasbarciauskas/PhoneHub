@@ -196,6 +196,11 @@ final class StageGeometryTests: XCTestCase {
                      expectedColumns: 3, expectedRows: 2, container: container)
         assertPreset(.row, count: 12, expectedCount: 9,
                      expectedColumns: 9, expectedRows: 1, container: container)
+        assertPreset(.row, count: 3, expectedCount: 3,
+                     expectedColumns: 3, expectedRows: 1, container: container)
+        let threeDeviceRow = gridTileRects(count: 3, preset: .row,
+                                           within: container, inset: 20, spacing: 10)
+        XCTAssertEqual(threeDeviceRow.last!.maxX, container.maxX - 20, accuracy: 0.0001)
     }
 
     func testFixedGridPresetTilesRespectInsetSpacingAndDoNotOverlap() {
@@ -250,6 +255,16 @@ final class StageGeometryTests: XCTestCase {
         XCTAssertEqual(half.width, 150, accuracy: 0.0001)
         XCTAssertEqual(half.height, 300, accuracy: 0.0001)
         XCTAssertTrue(tile.contains(half))
+    }
+
+    func testTileContentRectReservesClampedFooterInsideTile() {
+        let tile = CGRect(x: 100, y: 200, width: 300, height: 600)
+
+        XCTAssertEqual(tileContentRect(in: tile, footerHeight: 48),
+                       CGRect(x: 100, y: 200, width: 300, height: 552))
+        XCTAssertEqual(tileContentRect(in: tile, footerHeight: -10), tile)
+        XCTAssertEqual(tileContentRect(in: tile, footerHeight: 700),
+                       CGRect(x: 100, y: 200, width: 300, height: 0))
     }
 
     private func assertGridTileRects(count: Int,

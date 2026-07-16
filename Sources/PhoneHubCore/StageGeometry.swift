@@ -167,6 +167,7 @@ public func gridTileRects(count: Int,
     }
     guard count > 0, container.width > 0, container.height > 0 else { return [] }
 
+    let tileCount = min(count, preset.capacity)
     let dimensions: (columns: Int, rows: Int)
     switch preset {
     case .auto:
@@ -176,10 +177,9 @@ public func gridTileRects(count: Int,
     case .threeByTwo:
         dimensions = (3, 2)
     case .row:
-        dimensions = (9, 1)
+        dimensions = (tileCount, 1)
     }
 
-    let tileCount = min(count, preset.capacity)
     let clampedInset = max(0, inset)
     let clampedSpacing = max(0, spacing)
     let insetX = min(clampedInset, max(0, container.width / 2))
@@ -217,4 +217,12 @@ public func zoomedTileRect(in tile: CGRect, scale: CGFloat, minimumScale: CGFloa
                   y: tile.midY - size.height / 2,
                   width: size.width,
                   height: size.height)
+}
+
+public func tileContentRect(in tile: CGRect, footerHeight: CGFloat) -> CGRect {
+    let reservedHeight = min(max(0, footerHeight), max(0, tile.height))
+    return CGRect(x: tile.minX,
+                  y: tile.minY,
+                  width: max(0, tile.width),
+                  height: max(0, tile.height) - reservedHeight)
 }

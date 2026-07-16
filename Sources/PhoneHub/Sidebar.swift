@@ -51,6 +51,16 @@ struct Sidebar: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
+                if store.layout == .wall {
+                    Picker("Wall preset", selection: $store.wallGridPreset) {
+                        ForEach(WallGridPreset.allCases) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                }
             }
             .padding(.horizontal, Theme.s3).padding(.top, Theme.s3)
 
