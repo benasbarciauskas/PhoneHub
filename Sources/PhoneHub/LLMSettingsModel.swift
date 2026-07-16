@@ -33,6 +33,7 @@ final class LLMSettingsModel {
     }
 
     var selectedBackend: AgentBackend { config.selectedBackend }
+    var visionEnabled: Bool { config.vision }
 
     func selectBackend(_ backend: AgentBackend) {
         config.selectedBackend = backend
@@ -46,6 +47,11 @@ final class LLMSettingsModel {
     func setModel(_ model: String, for backend: AgentBackend) {
         guard backend.isAPI else { return }
         config.setModel(model, forProvider: backend.rawValue)
+        persistConfig()
+    }
+
+    func setVision(_ enabled: Bool) {
+        config.vision = enabled
         persistConfig()
     }
 

@@ -59,6 +59,24 @@ final class LLMSettingsModelTests: XCTestCase {
         XCTAssertFalse(model.statusMessage?.contains("fixture-credential") ?? true)
     }
 
+    func testVisionTogglePersistsInConfig() throws {
+        let suite = "LLMSettingsModelTests.vision.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LLMConfigStore(defaults: defaults)
+        let model = LLMSettingsModel(
+            configStore: store,
+            keyLookup: { _ in nil },
+            keySetter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+
+        XCTAssertFalse(model.visionEnabled)
+        model.setVision(true)
+        XCTAssertTrue(model.visionEnabled)
+        XCTAssertTrue(store.load().vision)
+    }
+
     private func ephemeralDefaults() -> UserDefaults {
         UserDefaults(suiteName: "LLMSettingsModelTests.\(UUID().uuidString)")!
     }

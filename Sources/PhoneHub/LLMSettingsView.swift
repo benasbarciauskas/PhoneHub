@@ -49,6 +49,15 @@ struct LLMSettingsView: View {
                         }
                     }
                 }
+                Toggle(isOn: visionBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Vision mode (send screenshots to the model)")
+                        Text("API backends only — claude/codex CLIs use their own vision.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.subtext)
+                    }
+                }
+                .toggleStyle(.switch)
             } else {
                 Text("\(backend.displayName) uses its existing CLI login.")
                     .font(.caption)
@@ -78,6 +87,13 @@ struct LLMSettingsView: View {
         Binding(
             get: { settings.model(for: backend) },
             set: { settings.setModel($0, for: backend) }
+        )
+    }
+
+    private var visionBinding: Binding<Bool> {
+        Binding(
+            get: { settings.visionEnabled },
+            set: { settings.setVision($0) }
         )
     }
 
