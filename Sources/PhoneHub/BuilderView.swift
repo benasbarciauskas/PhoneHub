@@ -36,7 +36,17 @@ struct BuilderView: View {
 
             inputBox
             messageList
-            timelineToolbar
+            BuilderRecordingToolbar(
+                draftStore: draftStore,
+                engine: engine,
+                runner: runner,
+                focused: focused,
+                chatBusy: chatBusy,
+                backend: backend,
+                addTap: addTap,
+                insert: { kind in insert(kind, at: nil) },
+                showSources: { showingSources = true }
+            )
             timeline
             runControls
             runnerStatus
@@ -137,31 +147,6 @@ struct BuilderView: View {
             }
             .frame(maxHeight: 92)
         }
-    }
-
-    private var timelineToolbar: some View {
-        HStack(spacing: Theme.s2) {
-            Text("Timeline").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
-            Spacer()
-            Button { addTap() } label: { Image(systemName: "hand.tap") }
-                .help("Add tap")
-            Menu {
-                Button("Pause") { insert(.pause, at: nil) }
-                Button("Type text") { insert(.typeText, at: nil) }
-                Button("AI action") { insert(.aiAction, at: nil) }
-            } label: { Image(systemName: "plus") }
-            .menuStyle(.borderlessButton)
-            .help("Insert action")
-            Button { showingSources = true } label: { Image(systemName: "text.badge.plus") }
-                .help("Text Sources")
-            Button(role: .destructive) { draftStore.clear() } label: {
-                Image(systemName: "trash")
-            }
-            .help("Clear draft")
-            .disabled(draftStore.draft.steps.isEmpty)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.subtext)
     }
 
     @ViewBuilder

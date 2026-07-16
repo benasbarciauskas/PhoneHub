@@ -50,8 +50,8 @@ final class AutomationEngine {
     private(set) var log: [String] = []
     private(set) var currentAction: String?
     private(set) var runningPreset: Preset?
-    private(set) var isRefining = false
-    private(set) var isCondensing = false
+    var isRefining = false
+    var isCondensing = false
     private(set) var lastCapture: [CapturedCall] = []
     private(set) var isBuilderAction = false
 
@@ -62,9 +62,9 @@ final class AutomationEngine {
     private var configURL: URL?
     private var apiTask: Task<Void, Never>?
     private var apiMessages: [LLMMessage] = []
-    private let backendAvailability: (AgentBackend) -> BackendStatus
+    let backendAvailability: (AgentBackend) -> BackendStatus
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
-    private let apiTextCompletion: (AgentBackend, String) async throws -> String
+    let apiTextCompletion: (AgentBackend, String) async throws -> String
     private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
 
     // Interactive-resume state: kept across the awaitingInput pause.
@@ -354,64 +354,6 @@ final class AutomationEngine {
                 recordHistory(.stopped)
             }
         }
-    }
-
-    /// Rewrite rough text into a clear phone-automation goal. Text-only spawn —
-    /// NO tools, NO --mcp-config. Returns the rewritten goal. Throws on failure;
-    /// callers leave the original text unchanged on error.
-    func refine(_ text: String) async throws -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return trimmed }
-        guard case let .available(path: claudePath) = BackendAvailability.check(.claude) else {
-            throw RefineError.claudeNotFound
-        }
-        isRefining = true
-        defer { isRefining = false }
-
-        let args = RefinePrompt.arguments(for: trimmed)
-        let result: CommandResult = try await Task.detached(priority: .userInitiated) {
-            try runToolAt(path: claudePath, args: args, timeout: 60)
-        }.value
-
-        guard result.exitCode == 0 else {
-            let err = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw RefineError.failed(err.isEmpty ? "claude exited with code \(result.exitCode)" : err)
-        }
-        let out = (String(data: result.stdout, encoding: .utf8) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !out.isEmpty else { throw RefineError.emptyOutput }
-        return out
-    }
-
-    func condense(goal: String, rawSteps: [AutomationStep],
-                  backend: AgentBackend) async throws -> [AutomationStep] {
-        guard !isBusy else { throw CondenseError.backend("A device run is active.") }
-        guard case let .available(path) = backendAvailability(backend) else {
-            if case let .missing(hint) = backendAvailability(backend) {
-                throw CondenseError.backend(hint)
-            }
-            throw CondenseError.backend("\(backend.rawValue) is unavailable.")
-        }
-        let prompt = try CondensePrompt.prompt(goal: goal, rawSteps: rawSteps)
-        isCondensing = true
-        defer { isCondensing = false }
-
-        if backend.isAPI {
-            let text = try await apiTextCompletion(backend, prompt)
-            return try CondensePrompt.parseResponse(text)
-        }
-
-        let arguments = CondensePrompt.arguments(prompt: prompt, backend: backend)
-        let result: CommandResult = try await Task.detached(priority: .userInitiated) {
-            try runToolAt(path: path, args: arguments, timeout: 120)
-        }.value
-        guard result.exitCode == 0 else {
-            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw CondenseError.backend(stderr.isEmpty
-                ? "\(backend.rawValue) exited with code \(result.exitCode)" : stderr)
-        }
-        let output = String(decoding: result.stdout, as: UTF8.self)
-        return try CondensePrompt.parseResponse(output)
     }
 
     /// Clear a finished/stopped/failed run from the UI and return to the list.

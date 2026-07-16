@@ -8,6 +8,7 @@ struct LLMSettingsView: View {
     @State private var keyEntry = ""
     @State private var accessibilityGranted = false
     @State private var screenRecordingGranted = false
+    @State private var inputMonitoringGranted = false
 
     private var backend: AgentBackend { settings.selectedBackend }
 
@@ -147,6 +148,18 @@ struct LLMSettingsView: View {
                 .foregroundStyle(Theme.subtext)
                 .fixedSize(horizontal: false, vertical: true)
 
+            permissionRow(
+                title: "Input Monitoring",
+                granted: inputMonitoringGranted,
+                request: SystemPermissions.requestInputMonitoring,
+                openSettings: SystemPermissions.openInputMonitoringSettings
+            )
+            Text("Lets Record capture keystrokes only while the focused phone mirror is active. "
+                 + "Without it, recording continues with mouse actions only.")
+                .font(.caption)
+                .foregroundStyle(Theme.subtext)
+                .fixedSize(horizontal: false, vertical: true)
+
             field("Screen capture policy") {
                 Picker("Screen capture policy", selection: screenCapturePolicyBinding) {
                     ForEach(ScreenCapturePolicy.allCases, id: \.self) { policy in
@@ -245,6 +258,7 @@ struct LLMSettingsView: View {
     private func refreshPermissionStatus() {
         accessibilityGranted = SystemPermissions.accessibilityGranted
         screenRecordingGranted = SystemPermissions.screenRecordingGranted
+        inputMonitoringGranted = SystemPermissions.inputMonitoringGranted
     }
 
     private func pollPermissionStatus() async {

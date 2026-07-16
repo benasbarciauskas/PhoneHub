@@ -53,4 +53,36 @@ final class AutomationStepExecutionTests: XCTestCase {
         XCTAssertNil(try toolInvocation(for: .switchDevice(id: id, deviceRef: "Pixel 8"),
                                         platform: .ios, serial: nil, binding: nil))
     }
+
+    func testRecordedTapTextAndSwipeReachExecutionUnchanged() throws {
+        var translator = HumanRecordingTranslator()
+        let point = HumanRecordingPoint(
+            windowPoint: CGPoint(x: 12, y: 34),
+            devicePoint: CGPoint(x: 120, y: 340)
+        )
+        _ = translator.consume(.leftMouseDown(time: 0, point: point))
+        _ = translator.consume(.leftMouseUp(time: 0.1, point: point))
+        let tap = try XCTUnwrap(translator.consume(.idle(time: 0.5)).last)
+        _ = translator.consume(.printableKey(time: 0.6, text: "hello"))
+        let text = try XCTUnwrap(translator.consume(.returnKey(time: 0.7)).first)
+        _ = translator.consume(.leftMouseDown(time: 0.8, point: point))
+        let end = HumanRecordingPoint(
+            windowPoint: CGPoint(x: 72, y: 34),
+            devicePoint: CGPoint(x: 720, y: 340)
+        )
+        let swipe = try XCTUnwrap(translator.consume(.leftMouseUp(time: 0.9, point: end)).last)
+
+        XCTAssertEqual(
+            try toolInvocation(for: tap, platform: .ios, serial: nil, binding: nil),
+            ToolInvocation(tool: "tap", arguments: ["x": .double(120), "y": .double(340)])
+        )
+        XCTAssertEqual(
+            try toolInvocation(for: text, platform: .ios, serial: nil, binding: nil),
+            ToolInvocation(tool: "type_text", arguments: ["text": .string("hello")])
+        )
+        XCTAssertEqual(
+            try toolInvocation(for: swipe, platform: .ios, serial: nil, binding: nil),
+            ToolInvocation(tool: "swipe", arguments: ["direction": .string("right")])
+        )
+    }
 }
