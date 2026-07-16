@@ -35,6 +35,7 @@ screenshots/
 *.app/
 .swiftpm/
 PhoneHub.app/
+PhoneHub-*-macos.zip
 *.icns
 *.iconset/
 master-icon.png
