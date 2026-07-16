@@ -8,6 +8,30 @@ final class AutomationPlanTests: XCTestCase {
     private let androidDevice = Device(id: "ABC123XYZ", platform: .android,
                                        model: "Pixel 8", osVersion: "15", status: "device")
 
+    func testAgentBackendClassifiesCLIAndAPIBackends() {
+        XCTAssertEqual(AgentBackend.allCases, [.claude, .codex, .openrouter, .openai, .anthropic])
+        XCTAssertTrue(AgentBackend.claude.isCLI)
+        XCTAssertTrue(AgentBackend.codex.isCLI)
+        XCTAssertFalse(AgentBackend.openrouter.isCLI)
+        XCTAssertTrue(AgentBackend.openrouter.isAPI)
+        XCTAssertTrue(AgentBackend.openai.isAPI)
+        XCTAssertTrue(AgentBackend.anthropic.isAPI)
+    }
+
+    func testAPIBackendsNeverProduceCLIArguments() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios])
+        for backend in [AgentBackend.openrouter, .openai, .anthropic] {
+            let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: backend)
+            XCTAssertEqual(plan.arguments(mcpConfigPath: "/tmp/unused"), [], backend.rawValue)
+            XCTAssertEqual(
+                plan.resumeArguments(sessionId: "unused", reply: "unused",
+                                     mcpConfigPath: "/tmp/unused"),
+                [],
+                backend.rawValue
+            )
+        }
+    }
+
     func testClaudeArgumentsUnchangedByBackendField() throws {
         let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
         let plan = try buildAutomationPlan(preset: preset, device: iosDevice)

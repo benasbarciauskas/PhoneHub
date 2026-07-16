@@ -4,6 +4,9 @@ public func parseStreamLine(_ line: String, backend: AgentBackend) -> StreamEven
     switch backend {
     case .claude: return StreamJSONParser.parseLine(line)
     case .codex: return CodexStreamParser.parseLine(line)
+    case .openrouter, .openai, .anthropic:
+        // API backends emit StreamEvent directly from ApiAgentRuntime.
+        return .ignored
     }
 }
 

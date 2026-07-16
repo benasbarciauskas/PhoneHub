@@ -50,10 +50,13 @@ public struct McpLaunchConfiguration: Equatable, Sendable {
 public final class ApiAgentRuntime: @unchecked Sendable {
     private let provider: any LLMProvider
     private let client: any McpToolClient
+    private let sensitiveValues: [String]
 
-    public init(provider: any LLMProvider, client: any McpToolClient) {
+    public init(provider: any LLMProvider, client: any McpToolClient,
+                sensitiveValues: [String] = []) {
         self.provider = provider
         self.client = client
+        self.sensitiveValues = sensitiveValues.filter { !$0.isEmpty }
     }
 
     public static func live(provider: any LLMProvider,
@@ -107,7 +110,16 @@ public final class ApiAgentRuntime: @unchecked Sendable {
         do {
             while true {
                 try Task.checkCancellation()
-                let response = try await provider.send(messages: messages, tools: tools)
+                let response: LLMResponse
+                do {
+                    response = try await provider.send(messages: messages, tools: tools)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as LLMProviderError {
+                    return fail(redact(error.localizedDescription), onEvent: onEvent)
+                } catch {
+                    return fail("The LLM provider request failed.", onEvent: onEvent)
+                }
 
                 switch Self.decision(for: response) {
                 case .needInput(let question):
@@ -151,7 +163,7 @@ public final class ApiAgentRuntime: @unchecked Sendable {
         } catch is CancellationError {
             return .cancelled
         } catch {
-            return fail(error.localizedDescription, onEvent: onEvent)
+            return fail(redact(error.localizedDescription), onEvent: onEvent)
         }
     }
 
@@ -168,6 +180,12 @@ public final class ApiAgentRuntime: @unchecked Sendable {
                       onEvent: @Sendable (StreamEvent) -> Void) -> ApiAgentOutcome {
         onEvent(.result(subtype: "error", text: message, sessionId: nil))
         return .failed(message)
+    }
+
+    private func redact(_ message: String) -> String {
+        sensitiveValues.reduce(message) { text, secret in
+            text.replacingOccurrences(of: secret, with: "[REDACTED]")
+        }
     }
 
     public static func mcpLaunchConfiguration(plan: AutomationPlan) throws

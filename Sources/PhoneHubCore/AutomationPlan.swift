@@ -8,6 +8,28 @@ public enum AutomationPlanError: Error, Equatable {
 public enum AgentBackend: String, Codable, CaseIterable, Sendable {
     case claude
     case codex
+    case openrouter
+    case openai
+    case anthropic
+
+    public var isCLI: Bool {
+        switch self {
+        case .claude, .codex: return true
+        case .openrouter, .openai, .anthropic: return false
+        }
+    }
+
+    public var isAPI: Bool { !isCLI }
+
+    public var displayName: String {
+        switch self {
+        case .claude: return "Claude"
+        case .codex: return "Codex"
+        case .openrouter: return "OpenRouter"
+        case .openai: return "OpenAI"
+        case .anthropic: return "Anthropic"
+        }
+    }
 }
 
 /// Everything needed to launch a headless agent for one preset run.
@@ -47,6 +69,9 @@ public struct AutomationPlan: Equatable {
                 "--skip-git-repo-check",
                 "-s", "read-only"
             ] + codexMCPArguments + ["\(systemPreamble)\n\n\(prompt)"]
+        case .openrouter, .openai, .anthropic:
+            // API backends run in ApiAgentRuntime and must never spawn a CLI.
+            return []
         }
     }
 
@@ -75,6 +100,9 @@ public struct AutomationPlan: Equatable {
             return ["exec", "resume", sessionId, "--json"]
                 + codexMCPArguments
                 + [reply]
+        case .openrouter, .openai, .anthropic:
+            // API chat keeps normalized message history instead of CLI sessions.
+            return []
         }
     }
 

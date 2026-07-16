@@ -123,9 +123,42 @@ final class ApiAgentRuntimeTests: XCTestCase {
         XCTAssertEqual(cappedClient.calls.map(\.name), ["press_home"])
     }
 
+    func testRuntimeNeverEmitsSensitiveValuesFromProviderErrors() async {
+        let secret = "phonehub-test-secret-never-log"
+        let provider = FailingProvider(error: SecretError(message: "Rejected \(secret)"))
+        let client = RecordingMCPClient(result: McpToolResult(text: "", isError: false))
+        let events = EventRecorder()
+        let runtime = ApiAgentRuntime(provider: provider, client: client,
+                                      sensitiveValues: [secret])
+
+        let outcome = await runtime.run(
+            systemPreamble: "system", prompt: "goal", priorMessages: [],
+            maxToolCalls: 2, serverName: "mirroir", onEvent: { events.append($0) }
+        )
+
+        let rendered = String(describing: events.values)
+        XCTAssertFalse(rendered.contains(secret))
+        XCTAssertFalse(String(describing: outcome).contains(secret))
+        XCTAssertEqual(events.values, [
+            .result(subtype: "error", text: "The LLM provider request failed.", sessionId: nil)
+        ])
+    }
+
     private func json(_ string: String) throws -> [String: Any] {
         let data = try XCTUnwrap(string.data(using: .utf8))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+}
+
+private struct SecretError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private struct FailingProvider: LLMProvider {
+    let error: any Error
+    func send(messages: [LLMMessage], tools: [LLMToolDefinition]) async throws -> LLMResponse {
+        throw error
     }
 }
 

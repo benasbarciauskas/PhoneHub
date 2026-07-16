@@ -22,4 +22,30 @@ final class BackendAvailabilityTests: XCTestCase {
             .missing(hint: "Install the Codex CLI (npm i -g @openai/codex) and run `codex` once to log in. PhoneHub uses your own login — it stores no keys.")
         )
     }
+
+    func testAPIBackendIsAvailableOnlyWithNonEmptyKey() {
+        XCTAssertEqual(
+            BackendAvailability.check(.openai, resolver: { _ in nil }, keyLookup: { _ in "key" }),
+            .available(path: "api")
+        )
+        XCTAssertEqual(
+            BackendAvailability.check(.openai, resolver: { _ in "/must/not/be/used" },
+                                      keyLookup: { _ in "  " }),
+            .missing(hint: "Add your OpenAI API key in Settings.")
+        )
+    }
+
+    func testEachMissingAPIBackendHasProviderSpecificHint() {
+        let expected: [(AgentBackend, String)] = [
+            (.openrouter, "Add your OpenRouter API key in Settings."),
+            (.openai, "Add your OpenAI API key in Settings."),
+            (.anthropic, "Add your Anthropic API key in Settings.")
+        ]
+        for (backend, hint) in expected {
+            XCTAssertEqual(
+                BackendAvailability.check(backend, resolver: { _ in nil }, keyLookup: { _ in nil }),
+                .missing(hint: hint)
+            )
+        }
+    }
 }

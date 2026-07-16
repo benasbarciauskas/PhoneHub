@@ -48,6 +48,9 @@ public enum CondensePrompt {
             return ["-p", prompt, "--output-format", "text"]
         case .codex:
             return ["exec", "--skip-git-repo-check", "-s", "read-only", prompt]
+        case .openrouter, .openai, .anthropic:
+            // Condensing is CLI-only; callers must not launch these empty arguments.
+            return []
         }
     }
 

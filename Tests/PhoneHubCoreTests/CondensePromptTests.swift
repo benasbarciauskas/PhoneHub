@@ -19,6 +19,9 @@ final class CondensePromptTests: XCTestCase {
         XCTAssertEqual(codex.last, prompt)
         XCTAssertTrue(codex.contains("exec"))
         XCTAssertFalse(codex.contains("--json"))
+        for backend in [AgentBackend.openrouter, .openai, .anthropic] {
+            XCTAssertEqual(CondensePrompt.arguments(prompt: prompt, backend: backend), [])
+        }
     }
 
     func testParsesValidStepArray() throws {
