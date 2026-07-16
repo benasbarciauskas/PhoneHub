@@ -136,6 +136,25 @@ exactly `NEED_INPUT: <your concise question>` and end your turn. You will be \
 resumed with the user's answer.
 """
 
+/// Appended when preferKnownSteps is on — reuse compiled/recorded skills first.
+public let preferKnownStepsInstruction = """
+Prefer reusing known/compiled steps for this app when they exist — replay them \
+directly and only look at (describe) the screen when a step is missing, the \
+screen has changed, or you're unsure. This is faster and more reliable for \
+repeated tasks.
+"""
+
+/// Pure: base preamble, optionally with the known-steps preference instruction.
+public func buildAutomationSystemPreamble(preferKnownSteps: Bool) -> String {
+    guard preferKnownSteps else { return automationSystemPreamble }
+    return automationSystemPreamble + "\n\n" + preferKnownStepsInstruction
+}
+
+/// Preset override beats app default; nil inherits.
+public func effectivePreferKnownSteps(presetOverride: Bool?, appDefault: Bool) -> Bool {
+    presetOverride ?? appDefault
+}
+
 public let chatSystemPreamble = """
 You are operating a phone through the attached tools, in an interactive chat \
 with the user. Answer conversationally. When the user asks about the screen, \
@@ -186,7 +205,8 @@ private func platformWiring(for device: Device) throws -> PlatformWiring {
 public func buildAutomationPlan(
     preset: Preset,
     device: Device,
-    backend: AgentBackend = .claude
+    backend: AgentBackend = .claude,
+    preferKnownSteps: Bool = false
 ) throws -> AutomationPlan {
     guard preset.supports(device.platform) else {
         throw AutomationPlanError.platformMismatch
@@ -202,10 +222,15 @@ public func buildAutomationPlan(
     let prompt = "\(goal)\n\n\(wiring.deviceContext)\n"
         + "You have a hard cap of \(preset.maxSteps) tool calls; stop before exceeding it."
 
+    let prefer = effectivePreferKnownSteps(
+        presetOverride: preset.preferKnownSteps,
+        appDefault: preferKnownSteps
+    )
+
     return AutomationPlan(
         backend: preset.backend ?? backend,
         prompt: prompt,
-        systemPreamble: automationSystemPreamble,
+        systemPreamble: buildAutomationSystemPreamble(preferKnownSteps: prefer),
         mcpConfigJSON: wiring.mcpJSON,
         allowedTools: wiring.allowedTools,
         maxTurns: preset.maxSteps,
@@ -215,9 +240,11 @@ public func buildAutomationPlan(
 
 /// Render the exact system-preamble + user-prompt payload for a preset run.
 /// Preview errors are converted to readable notes so the detail editor remains useful.
-public func presetPayloadPreview(preset: Preset, device: Device) -> String {
+public func presetPayloadPreview(preset: Preset, device: Device,
+                                 preferKnownSteps: Bool = false) -> String {
     do {
-        let plan = try buildAutomationPlan(preset: preset, device: device)
+        let plan = try buildAutomationPlan(preset: preset, device: device,
+                                           preferKnownSteps: preferKnownSteps)
         return "\(plan.systemPreamble)\n\n\(plan.prompt)"
     } catch AutomationPlanError.platformMismatch {
         let platformName = device.platform == .ios ? "iOS" : "Android"

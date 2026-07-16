@@ -19,6 +19,29 @@ final class PresetStoreTests: XCTestCase {
         """
         let preset = try JSONDecoder().decode(Preset.self, from: Data(json.utf8))
         XCTAssertNil(preset.backend)
+        XCTAssertNil(preset.preferKnownSteps)
+    }
+
+    func testExistingPresetJSONDecodesWithoutPreferKnownSteps() throws {
+        // Old presets.json entries omit preferKnownSteps; must remain nil (inherit).
+        let json = """
+        {"id":"00000000-0000-0000-0000-0000000000aa","name":"Legacy","goal":"do it","app":"IG","platforms":["ios","android"],"maxSteps":40,"backend":"codex"}
+        """
+        let preset = try JSONDecoder().decode(Preset.self, from: Data(json.utf8))
+        XCTAssertEqual(preset.name, "Legacy")
+        XCTAssertEqual(preset.backend, .codex)
+        XCTAssertNil(preset.preferKnownSteps)
+    }
+
+    func testPreferKnownStepsRoundTrip() throws {
+        let original = Preset(name: "A", goal: "g", platforms: [.ios], preferKnownSteps: true)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(Preset.self, from: data)
+        XCTAssertEqual(decoded.preferKnownSteps, true)
+
+        let off = Preset(name: "B", goal: "g", platforms: [.ios], preferKnownSteps: false)
+        let offDecoded = try JSONDecoder().decode(Preset.self, from: try JSONEncoder().encode(off))
+        XCTAssertEqual(offDecoded.preferKnownSteps, false)
     }
 
     func testDecodeTolerantSkipsBadEntries() {
