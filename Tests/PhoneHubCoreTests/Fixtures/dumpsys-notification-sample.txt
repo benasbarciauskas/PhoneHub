@@ -1,0 +1,43 @@
+Current Notification Manager state:
+  Notification List:
+    NotificationRecord(0x7f1a2b3c: PackageUserKey{com.whatsapp/0}: Notification(channel=messages pri=0 contentView=null vibrate=null sound=null defaults=0x0 flags=0x10 color=0x00000000 vis=PRIVATE)):
+      uid=10123 userId=0 effectiveUid=10123 opPkg=com.whatsapp pkg=com.whatsapp icon=0x7f0801a2 flags=0x10 pri=0 key=0|com.whatsapp|42|null|10123 tag=null groupKey=0|com.whatsapp|g:msg
+      notification=
+            fullscreenIntent=null contentIntent=PendingIntent{abc} deleteIntent=null
+      extras={
+          android.title=String (Alice)
+          android.text=String (Hey, are you free later?)
+          android.showWhen=Boolean (true)
+          android.appInfo=ApplicationInfo (com.whatsapp)
+      }
+      postTime=1712345678901
+      when=1712345678901
+
+    NotificationRecord(0x7f1a2b4d: PackageUserKey{com.google.android.gm/0}: Notification(channel=mail pri=0 contentView=null)):
+      uid=10145 userId=0 opPkg=com.google.android.gm pkg=com.google.android.gm icon=0x7f080099 flags=0x0 pri=0 key=0|com.google.android.gm|7|null|10145
+      extras={
+          android.title=String (Invoice attached)
+          android.text=String (Your receipt from PhoneHub is ready)
+          android.bigText=String (Your receipt from PhoneHub is ready. Open Gmail for details.)
+          android.showWhen=Boolean (true)
+      }
+      postTime=1712345600000
+
+    NotificationRecord(0x7f1a2b5e: PackageUserKey{com.android.systemui/0}: Notification(channel=FOREGROUND_SERVICE pri=-2)):
+      uid=1000 userId=0 opPkg=com.android.systemui pkg=com.android.systemui icon=0x0 flags=0x40 pri=-2
+      extras={
+          android.title=String ()
+          android.text=String ()
+      }
+      postTime=1712345500000
+
+    NotificationRecord(0x7f1a2b6f: PackageUserKey{com.slack/0}: Notification(channel=dm pri=1)):
+      uid=10200 userId=0 opPkg=com.slack pkg=com.slack icon=0x7f080010 flags=0x10 pri=1 key=0|com.slack|99|null|10200
+      extras={
+          android.title=String (Design review)
+          android.text=String (Ben: shipping the notification hub panel today)
+      }
+      when=1712345700123
+
+  Ranking Map:
+    ...
