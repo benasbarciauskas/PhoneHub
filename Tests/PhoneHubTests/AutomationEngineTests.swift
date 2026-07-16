@@ -66,6 +66,8 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertEqual(engine.log.filter {
             $0 == "screen capture disabled in settings — using text description only"
         }.count, 1)
+    }
+
     func testBuilderActionUsesConstrainedOriginCapturesToolAndClearsOnDismiss() async throws {
         let provider = AppSequenceProvider([
             LLMResponse(

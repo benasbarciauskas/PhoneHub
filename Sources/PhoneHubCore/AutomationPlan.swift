@@ -339,7 +339,9 @@ public func buildBuilderActionPlan(
     goal: String,
     device: Device,
     backend: AgentBackend = .claude,
-    preferKnownSteps: Bool = false
+    preferKnownSteps: Bool = false,
+    screenCapturePolicy: ScreenCapturePolicy = .duringRunsOnly,
+    isRunActive: Bool = true
 ) throws -> AutomationPlan {
     let goal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !goal.isEmpty else { throw AutomationPlanError.emptyGoal }
@@ -347,14 +349,19 @@ public func buildBuilderActionPlan(
     let preamble = preferKnownSteps
         ? builderActionSystemPreamble + "\n\n" + preferKnownStepsInstruction
         : builderActionSystemPreamble
+    let captureDecision = screenCaptureDecision(
+        policy: screenCapturePolicy,
+        isRunActive: isRunActive
+    )
     return AutomationPlan(
         backend: backend,
         prompt: "\(goal)\n\n\(wiring.deviceContext)",
-        systemPreamble: preamble,
+        systemPreamble: applyingCaptureDecision(to: preamble, decision: captureDecision),
         mcpConfigJSON: wiring.mcpJSON,
         allowedTools: wiring.allowedTools,
         maxTurns: 4,
-        serverName: wiring.server
+        serverName: wiring.server,
+        screenCaptureDecision: captureDecision
     )
 }
 

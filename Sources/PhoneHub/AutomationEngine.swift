@@ -176,7 +176,9 @@ final class AutomationEngine {
                 goal: goal,
                 device: device,
                 backend: backend,
-                preferKnownSteps: preferKnownSteps
+                preferKnownSteps: preferKnownSteps,
+                screenCapturePolicy: screenCapturePolicyProvider(),
+                isRunActive: true
             )
             let preset = Preset(
                 name: "Builder action",
