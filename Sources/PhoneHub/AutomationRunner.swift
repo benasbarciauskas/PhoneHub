@@ -9,6 +9,7 @@ final class AutomationRunner {
         case idle
         case running(stepIndex: Int, iteration: Int)
         case pausedNeedsRecalibrate(stepIndex: Int, label: String)
+        case pausedNeedsDevice(stepIndex: Int, deviceRef: String)
         case failed(String)
         case finished
     }
@@ -21,6 +22,9 @@ final class AutomationRunner {
 
     /// Optional; when set, every terminal automation run is appended to per-device history.
     var runHistoryStore: RunHistoryStore?
+
+    /// Resolve a switchDevice ref to a currently connected device (wired from DeviceStore).
+    var deviceResolver: (String) -> Device? = { _ in nil }
 
     private let store: AutomationStore
     private let agentEngine: AutomationEngine
@@ -42,8 +46,10 @@ final class AutomationRunner {
     }
 
     var isBusy: Bool {
-        if case .running = state { return true }
-        return false
+        switch state {
+        case .running, .pausedNeedsDevice: return true
+        default: return false
+        }
     }
 
     func run(_ automation: Automation, on device: Device, othersBusy: Bool) {
@@ -74,10 +80,13 @@ final class AutomationRunner {
         task?.cancel()
         task = nil
         runToken = nil
-        client?.stop()
-        client = nil
+        stopClient()
         if agentEngine.isBusy { agentEngine.stop() }
-        if isBusy {
+        if case .running = state {
+            log.append("— Stopped by user —")
+            state = .idle
+            recordHistory(.stopped)
+        } else if case .pausedNeedsDevice = state {
             log.append("— Stopped by user —")
             state = .idle
             recordHistory(.stopped)
@@ -94,16 +103,16 @@ final class AutomationRunner {
 
     private func execute(_ original: Automation, on device: Device, token: UUID) async {
         var automation = original
-        let connection = makeClient(for: device.platform)
-        client = connection
+        var currentDevice = device
+        let initial = makeClient(for: currentDevice.platform)
+        client = initial
         defer {
-            connection.stop()
-            if client === connection { client = nil }
+            stopClient()
             if runToken == token { task = nil; runToken = nil }
         }
 
         do {
-            try await connection.start()
+            try await initial.start()
             let steps = stepsToRun(automation: automation)
             guard !steps.isEmpty else {
                 if runToken == token {
@@ -119,22 +128,43 @@ final class AutomationRunner {
                     state = .running(stepIndex: index, iteration: iteration)
                     log.append("\(index + 1). \(summary(for: step))")
 
+                    if case let .switchDevice(_, deviceRef) = step {
+                        guard let next = deviceResolver(deviceRef) else {
+                            let message = "Device '\(deviceRef)' not connected — connect it to continue"
+                            state = .pausedNeedsDevice(stepIndex: index, deviceRef: deviceRef)
+                            log.append(message)
+                            stopClient()
+                            return
+                        }
+                        if next.platform == .android, !isValidSerial(next.id) {
+                            throw RunnerError.tool("Invalid Android device serial.")
+                        }
+                        try await switchTo(next)
+                        currentDevice = next
+                        log.append("Switched to \(next.model) (\(next.platform.rawValue)).")
+                        continue
+                    }
+
+                    guard let connection = client else {
+                        throw RunnerError.tool("MCP client is not running.")
+                    }
+
                     if let label = probeLabel(for: step), !automation.sharedCoordinates {
-                        let arguments = describeArguments(for: device)
+                        let arguments = describeArguments(for: currentDevice)
                         let screen = try await connection.callTool("describe_screen",
                                                                    arguments: arguments,
                                                                    timeoutSeconds: 20)
                         if screen.isError { throw RunnerError.tool(screen.text) }
-                        let stored = automation.bindings[device.id]?[step.id.uuidString]
+                        let stored = automation.bindings[currentDevice.id]?[step.id.uuidString]
                         switch probe(step: label, stored: stored,
                                      elements: parseScreenElements(screen.text)) {
                         case .keep(let binding):
-                            try await invoke(step, binding: binding, device: device, client: connection)
+                            try await invoke(step, binding: binding, device: currentDevice, client: connection)
                         case .rebind(let binding):
-                            automation.bindings[device.id, default: [:]][step.id.uuidString] = binding
+                            automation.bindings[currentDevice.id, default: [:]][step.id.uuidString] = binding
                             store.update(automation)
                             log.append("Rebound “\(label)” to (\(Int(binding.x)), \(Int(binding.y))).")
-                            try await invoke(step, binding: binding, device: device, client: connection)
+                            try await invoke(step, binding: binding, device: currentDevice, client: connection)
                         case .missing:
                             state = .pausedNeedsRecalibrate(stepIndex: index, label: label)
                             log.append("Couldn’t find “\(label)”.")
@@ -143,11 +173,11 @@ final class AutomationRunner {
                     } else if case let .wait(_, ms) = step {
                         try await sleep(milliseconds: ms)
                     } else if case let .aiStep(_, prompt) = step {
-                        try await runAIStep(prompt, on: device)
+                        try await runAIStep(prompt, on: currentDevice)
                     } else {
                         let binding = automation.sharedCoordinates
                             ? sharedBinding(for: step, in: automation) : nil
-                        try await invoke(step, binding: binding, device: device, client: connection)
+                        try await invoke(step, binding: binding, device: currentDevice, client: connection)
                     }
                     try await sleep(milliseconds: automationSettleMilliseconds)
                 }
@@ -167,8 +197,21 @@ final class AutomationRunner {
         }
     }
 
+    private func switchTo(_ device: Device) async throws {
+        stopClient()
+        let next = makeClient(for: device.platform)
+        client = next
+        try await next.start()
+    }
+
+    private func stopClient() {
+        client?.stop()
+        client = nil
+    }
+
     private func invoke(_ step: AutomationStep, binding: Automation.Binding?, device: Device,
                         client: McpDirectClient) async throws {
+        // Use the *current* device platform (may differ from automation.platform after switchDevice).
         guard let invocation = try toolInvocation(for: step, platform: device.platform,
                                                   serial: device.platform == .android ? device.id : nil,
                                                   binding: binding) else { return }
@@ -245,6 +288,7 @@ final class AutomationRunner {
         case .openURL: return "Open URL"
         case .wait: return "Wait"
         case .aiStep: return "AI step"
+        case let .switchDevice(_, deviceRef): return "Switch device → \(deviceRef)"
         }
     }
 
