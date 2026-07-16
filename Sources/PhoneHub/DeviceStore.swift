@@ -17,8 +17,13 @@ enum StageLayout: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Sidebar width in every layout, and the PhoneHub window width when the
+    /// stage pane is collapsed (Companion). Must stay wider than the sidebar's
+    /// widest fixed-minimum child — the 5-segment panel picker needs ~299pt
+    /// incl. padding; below that the content overflows and clips at the left.
+    static let sidebarWidth: CGFloat = 320
     /// PhoneHub window width when the stage pane is collapsed (sidebar only).
-    static let companionSidebarWidth: CGFloat = 260
+    static let companionSidebarWidth: CGFloat = sidebarWidth
     /// Gap between PhoneHub's right edge and the native mirror window.
     static let companionGap: CGFloat = 8
 }

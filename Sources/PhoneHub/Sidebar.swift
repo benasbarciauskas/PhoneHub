@@ -168,7 +168,7 @@ struct Sidebar: View {
                 }
             }
         }
-        .frame(width: store.layout == .companion ? StageLayout.companionSidebarWidth : 240)
+        .frame(width: StageLayout.sidebarWidth)
         .background(Theme.surface)
         .alert("Rename Device", isPresented: Binding(
             get: { renamingDevice != nil },
