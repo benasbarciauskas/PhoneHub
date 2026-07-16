@@ -38,6 +38,9 @@ struct Stage: View {
                              spacing: wallSpacing,
                              onSwap: swapWallTiles,
                              onZoom: setWallZoom)
+            } else if store.layout == .companion {
+                // Stage pane is collapsed in Companion; status lives in the sidebar window.
+                Color.clear
             } else {
                 PlaceholderView(placeholder: stageState.placeholder)
             }
@@ -53,22 +56,36 @@ struct Stage: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
 
-            PinnedAutomationBar(store: automationStore, runner: automationRunner,
-                                focused: store.focusedDevice,
-                                othersBusy: presetEngine.isBusy || chatEngine.isBusy,
-                                backend: agentBackend)
-                .padding(.top, Theme.s3)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            if store.layout != .companion {
+                PinnedAutomationBar(store: automationStore, runner: automationRunner,
+                                    focused: store.focusedDevice,
+                                    othersBusy: presetEngine.isBusy || chatEngine.isBusy,
+                                    backend: agentBackend)
+                    .padding(.top, Theme.s3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
         }
         .background(StageRectReader { rect in
             stageState.stageRect = rect
             if store.layout == .wall {
                 scheduleDockSync()
+            } else if store.layout == .companion {
+                // Companion docks against the window frame, not the stage rect.
             } else if stageState.activeDevice?.id != store.focusedDevice?.id {
                 focus(store.focusedDevice)
             }
-        } onWindowFrameChange: {
-            scheduleDockSync()
+        } onWindowFrameChange: { windowFrame in
+            stageState.phoneHubFrame = windowFrame
+            if store.layout == .companion {
+                // Initial dock waits on a real window frame; once docked, only resync.
+                if !stageState.isDocked, dockingTask == nil {
+                    companionFocus(store.focusedDevice)
+                } else {
+                    scheduleDockSync()
+                }
+            } else {
+                scheduleDockSync()
+            }
         })
         .onAppear {
             syncLayout()
@@ -154,6 +171,9 @@ struct Stage: View {
             stageState.activeDevice = nil
             stageState.isDocked = false
             syncWall()
+        case .companion:
+            stopWall()
+            companionFocus(store.focusedDevice)
         }
     }
 
@@ -275,6 +295,8 @@ struct Stage: View {
                 await resyncDockedWindow()
             case .wall:
                 syncWall()
+            case .companion:
+                await resyncCompanionDockedWindow()
             }
         }
     }
@@ -307,7 +329,7 @@ struct Stage: View {
         }
     }
 
-    private func stop(device: Device?) {
+    func stop(device: Device?) {
         guard let device else { return }
         switch device.platform {
         case .android:

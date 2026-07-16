@@ -65,17 +65,30 @@ struct PhoneHubApp: App {
                         historyStore: historyStore, scheduleStore: scheduleStore,
                         engine: engine, chatEngine: chatEngine, automationRunner: automationRunner,
                         agentBackend: agentBackendBinding, llmSettings: llmSettings)
-                Divider().overlay(Theme.border)
+                if store.layout != .companion {
+                    Divider().overlay(Theme.border)
+                }
+                // Keep Stage mounted in Companion so window-frame observers and
+                // docking stay alive; collapse width so PhoneHub is sidebar-only.
                 Stage(store: store, automationStore: automationStore,
                       automationRunner: automationRunner, presetEngine: engine,
                       chatEngine: chatEngine, agentBackend: agentBackendBinding.wrappedValue)
+                    .frame(minWidth: store.layout == .companion ? 0 : 200)
+                    .frame(maxWidth: store.layout == .companion ? 0 : .infinity)
+                    .opacity(store.layout == .companion ? 0 : 1)
+                    .allowsHitTesting(store.layout != .companion)
             }
-            .frame(minWidth: 980, minHeight: 720)
+            .frame(minWidth: store.layout == .companion ? StageLayout.companionSidebarWidth : 980,
+                   minHeight: 720)
+            .frame(maxWidth: store.layout == .companion ? StageLayout.companionSidebarWidth : .infinity)
             .background(Theme.bg)
             .preferredColorScheme(.dark)
             .onAppear {
                 store.refresh()
                 schedulerRunner.start()
+            }
+            .onChange(of: store.layout) { previous, layout in
+                applyWindowSize(for: layout, previous: previous)
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 scheduleDockedMirrorRaise()
@@ -93,6 +106,23 @@ struct PhoneHubApp: App {
             }
         }
         .windowStyle(.hiddenTitleBar)
+    }
+
+    /// Shrink to sidebar width in Companion; restore a usable width when leaving.
+    private func applyWindowSize(for layout: StageLayout, previous: StageLayout) {
+        guard let window = NSApp.windows.first(where: { $0.isVisible }) ?? NSApp.keyWindow else {
+            return
+        }
+        var frame = window.frame
+        if layout == .companion {
+            let width = StageLayout.companionSidebarWidth
+            // Keep the left edge fixed so the mirror attachment point is stable.
+            frame.size.width = width
+            window.setFrame(frame, display: true, animate: true)
+        } else if previous == .companion {
+            frame.size.width = max(980, frame.size.width)
+            window.setFrame(frame, display: true, animate: true)
+        }
     }
 
     private func scheduleDockedMirrorRaise() {
