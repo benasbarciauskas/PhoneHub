@@ -11,6 +11,8 @@ struct Sidebar: View {
     @Binding var agentBackend: AgentBackend
 
     @State private var lowerPanel: LowerPanel = .presets
+    @State private var renamingDevice: Device?
+    @State private var renameText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -57,9 +59,16 @@ struct Sidebar: View {
             ScrollView {
                 VStack(spacing: Theme.s1) {
                     ForEach(store.devices) { device in
-                        DeviceRow(device: device, selected: device.id == store.focusedDevice?.id)
+                        DeviceRow(device: device,
+                                  displayName: store.displayName(for: device),
+                                  selected: device.id == store.focusedDevice?.id)
                             .onTapGesture { withAnimation(Theme.selection) { store.setFocused(device) } }
                             .contextMenu {
+                                Button("Rename") {
+                                    renameText = store.displayName(for: device)
+                                    renamingDevice = device
+                                }
+                                Divider()
                                 Button("Remove", role: .destructive) {
                                     store.remove(deviceId: device.id)
                                 }
@@ -107,6 +116,19 @@ struct Sidebar: View {
         }
         .frame(width: 240)
         .background(Theme.surface)
+        .alert("Rename Device", isPresented: Binding(
+            get: { renamingDevice != nil },
+            set: { if !$0 { renamingDevice = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                guard let device = renamingDevice else { return }
+                store.setName(deviceId: device.id, name: renameText)
+            }
+        } message: {
+            Text("Leave the name empty to use the discovered model name.")
+        }
     }
 }
 
@@ -118,6 +140,7 @@ private enum LowerPanel: Hashable {
 
 private struct DeviceRow: View {
     let device: Device
+    let displayName: String
     let selected: Bool
 
     var statusColor: Color {
@@ -128,7 +151,7 @@ private struct DeviceRow: View {
         HStack(spacing: Theme.s2) {
             Circle().fill(statusColor).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(device.model)
+                Text(displayName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)

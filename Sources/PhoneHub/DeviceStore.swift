@@ -24,6 +24,18 @@ final class DeviceStore {
     var layout: StageLayout = .focus
     var toolMissing = false
     private var removedDeviceIDs: Set<String> = []
+    private var customNames: [String: String] = [:]
+    private let namesFileURL: URL
+
+    init(directory: URL? = nil) {
+        let directory = directory ?? PresetStore.defaultDirectory()
+        namesFileURL = directory.appendingPathComponent("device-names.json")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: namesFileURL),
+           let names = try? JSONDecoder().decode([String: String].self, from: data) {
+            customNames = names
+        }
+    }
 
     /// Re-run discovery off the main actor, then publish.
     func refresh() {
@@ -43,6 +55,20 @@ final class DeviceStore {
         if focusedDevice?.id == deviceId {
             focusedDevice = devices.first
         }
+    }
+
+    func setName(deviceId: String, name: String?) {
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmedName.isEmpty {
+            customNames.removeValue(forKey: deviceId)
+        } else {
+            customNames[deviceId] = trimmedName
+        }
+        saveCustomNames()
+    }
+
+    func displayName(for device: Device) -> String {
+        customNames[device.id] ?? device.model
     }
 
     func applyDiscovery(_ found: [Device]) {
@@ -67,5 +93,10 @@ final class DeviceStore {
 
     private func isReallyPresent(_ device: Device) -> Bool {
         device.platform == .android || device.status == "connected"
+    }
+
+    private func saveCustomNames() {
+        guard let data = try? JSONEncoder().encode(customNames) else { return }
+        try? data.write(to: namesFileURL, options: .atomic)
     }
 }

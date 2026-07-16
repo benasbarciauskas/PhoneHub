@@ -30,6 +30,7 @@ struct Stage: View {
             if store.layout == .wall {
                 WallGridView(devices: wallDevices,
                              placeholders: stageState.wallPlaceholders,
+                             displayNames: wallDisplayNames,
                              inset: wallInset,
                              spacing: wallSpacing)
             } else {
@@ -100,6 +101,12 @@ struct Stage: View {
         }.prefix(9))
     }
 
+    private var wallDisplayNames: [String: String] {
+        wallDevices.reduce(into: [:]) { names, device in
+            names[device.id] = store.displayName(for: device)
+        }
+    }
+
     private var shouldShowMirroringRail: Bool {
         guard store.layout == .focus,
               stageState.isDocked,
@@ -133,7 +140,7 @@ struct Stage: View {
         stageState.isDocked = false
 
         guard stageState.stageRect.width > 0, stageState.stageRect.height > 0 else {
-            stageState.placeholder = StagePlaceholder(title: device.map { "Docking \($0.model)..." } ?? "Select a device",
+            stageState.placeholder = StagePlaceholder(title: device.map { "Docking \(store.displayName(for: $0))..." } ?? "Select a device",
                                                       detail: "Waiting for the PhoneHub stage to be ready.")
             return
         }
@@ -149,18 +156,19 @@ struct Stage: View {
             return
         }
 
-        if let placeholder = stageNotConnectedIOSPlaceholder(for: device) {
+        if let placeholder = stageNotConnectedIOSPlaceholder(for: device,
+                                                              displayName: store.displayName(for: device)) {
             stageState.placeholder = placeholder
             return
         }
 
         guard device.isReady || device.platform == .ios else {
-            stageState.placeholder = StagePlaceholder(title: "\(device.model) is not ready",
+            stageState.placeholder = StagePlaceholder(title: "\(store.displayName(for: device)) is not ready",
                                                       detail: "Current status: \(device.status)")
             return
         }
 
-        stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
+        stageState.placeholder = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                   detail: nil)
 
         switch device.platform {
@@ -174,14 +182,14 @@ struct Stage: View {
     private func launchAndroid(_ device: Device) {
         let process = scrcpyController.launch(serial: device.id, frame: stageState.stageRect)
         if process == nil, scrcpyController.lastState == .missingTool {
-            stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
+            stageState.placeholder = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                       detail: "scrcpy not installed - brew install scrcpy")
         } else if process == nil {
-            stageState.placeholder = StagePlaceholder(title: "Could not dock \(device.model)",
+            stageState.placeholder = StagePlaceholder(title: "Could not dock \(store.displayName(for: device))",
                                                       detail: "scrcpy failed to start.")
         } else {
             stageState.isDocked = true
-            stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
+            stageState.placeholder = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                       detail: "Mirror window launched into the stage rectangle.")
         }
     }
@@ -189,7 +197,7 @@ struct Stage: View {
     private func dockIOS(_ device: Device) {
         guard isAccessibilityTrusted() else {
             requestAccessibilityIfNeeded()
-            stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
+            stageState.placeholder = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                       detail: "Enable Accessibility for PhoneHub in System Settings -> Privacy -> Accessibility")
             return
         }
@@ -219,14 +227,14 @@ struct Stage: View {
                 }
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = true
-                stageState.placeholder = StagePlaceholder(title: device.model,
+                stageState.placeholder = StagePlaceholder(title: store.displayName(for: device),
                                                           detail: "iPhone Mirroring is positioned in the stage rectangle.")
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = false
-                stageState.placeholder = StagePlaceholder(title: "Could not dock \(device.model)",
+                stageState.placeholder = StagePlaceholder(title: "Could not dock \(store.displayName(for: device))",
                                                           detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
             }
         }
@@ -271,7 +279,7 @@ struct Stage: View {
             }
         } catch {
             stageState.isDocked = false
-            stageState.placeholder = StagePlaceholder(title: "Could not dock \(device.model)",
+            stageState.placeholder = StagePlaceholder(title: "Could not dock \(store.displayName(for: device))",
                                                       detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
     }
@@ -341,7 +349,7 @@ struct Stage: View {
                     syncWallIOS(device, rect: rect, didRequestAccessibility: &didRequestAccessibility)
                 } else {
                     stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                        title: device.model,
+                        title: store.displayName(for: device),
                         detail: "iPhone Mirroring shows one iPhone at a time"
                     )
                 }
@@ -363,7 +371,7 @@ struct Stage: View {
         guard isAccessibilityTrusted() else {
             requestAccessibilityPromptIfNeeded(didRequestAccessibility: &didRequestAccessibility)
             stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                title: device.model,
+                title: store.displayName(for: device),
                 detail: "Enable Accessibility for PhoneHub in System Settings -> Privacy -> Accessibility"
             )
             return
@@ -372,11 +380,11 @@ struct Stage: View {
         if !stageState.wallAndroidSerials.contains(device.id) {
             let process = scrcpyController.launch(serial: device.id, frame: rect)
             if process == nil, scrcpyController.lastState == .missingTool {
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: store.displayName(for: device),
                                                                           detail: "scrcpy not installed - brew install scrcpy")
                 return
             } else if process == nil {
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: store.displayName(for: device),
                                                                           detail: "scrcpy failed to start.")
                 return
             }
@@ -388,11 +396,11 @@ struct Stage: View {
                 throw WindowDockError.windowNotFound("PhoneHub-\(device.id)")
             }
             try dockWindow(byTitle: "PhoneHub-\(device.id)", processIdentifier: processIdentifier, into: rect)
-            stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(title: store.displayName(for: device),
                                                                       detail: nil)
         } catch {
             stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                title: device.model,
+                title: store.displayName(for: device),
                 detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             )
             if case WindowDockError.windowNotFound = error {
@@ -405,14 +413,14 @@ struct Stage: View {
         guard isAccessibilityTrusted() else {
             requestAccessibilityPromptIfNeeded(didRequestAccessibility: &didRequestAccessibility)
             stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                title: device.model,
+                title: store.displayName(for: device),
                 detail: "Enable Accessibility for PhoneHub in System Settings -> Privacy -> Accessibility"
             )
             return
         }
 
         if dockingTaskIsWall, dockingTaskDeviceID == device.id {
-            stageState.wallPlaceholders[device.id] = StagePlaceholder(title: "Docking \(device.model)...",
+            stageState.wallPlaceholders[device.id] = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                                       detail: nil)
             return
         }
@@ -423,7 +431,7 @@ struct Stage: View {
         }
 
         cancelDockingTask()
-        stageState.wallPlaceholders[device.id] = StagePlaceholder(title: "Docking \(device.model)...",
+        stageState.wallPlaceholders[device.id] = StagePlaceholder(title: "Docking \(store.displayName(for: device))...",
                                                                   detail: nil)
         let taskID = UUID()
         dockingTaskDeviceID = device.id
@@ -450,14 +458,14 @@ struct Stage: View {
                 }
                 guard !Task.isCancelled, store.layout == .wall else { return }
                 stageState.wallIOSDeviceID = device.id
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
+                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: store.displayName(for: device),
                                                                           detail: nil)
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled, store.layout == .wall else { return }
                 stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                    title: device.model,
+                    title: store.displayName(for: device),
                     detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 )
             }
@@ -490,7 +498,7 @@ struct Stage: View {
             } catch {
                 guard !Task.isCancelled, store.layout == .wall else { return }
                 stageState.wallPlaceholders[device.id] = StagePlaceholder(
-                    title: device.model,
+                    title: store.displayName(for: device),
                     detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 )
                 stageState.wallIOSDeviceID = nil
@@ -564,12 +572,13 @@ private struct MirroringNavigationRail: View {
     }
 }
 
-func stageNotConnectedIOSPlaceholder(for device: Device) -> StagePlaceholder? {
+func stageNotConnectedIOSPlaceholder(for device: Device,
+                                     displayName: String? = nil) -> StagePlaceholder? {
     guard device.platform == .ios, device.status == "notConnected" else {
         return nil
     }
 
-    return StagePlaceholder(title: "\(device.model) — not connected",
+    return StagePlaceholder(title: "\(displayName ?? device.model) — not connected",
                             detail: "Bring it near + unlock (same Apple ID), or it may be mirrored elsewhere. macOS mirrors one iPhone at a time.")
 }
 
@@ -590,6 +599,7 @@ private final class StageState {
 private struct WallGridView: View {
     let devices: [Device]
     let placeholders: [String: StagePlaceholder]
+    let displayNames: [String: String]
     let inset: CGFloat
     let spacing: CGFloat
 
@@ -605,7 +615,7 @@ private struct WallGridView: View {
                                       inset: inset,
                                       spacing: spacing)
             ForEach(Array(zip(visibleDevices, rects)), id: \.0.id) { device, rect in
-                WallTileView(placeholder: placeholders[device.id] ?? StagePlaceholder(title: device.model,
+                WallTileView(placeholder: placeholders[device.id] ?? StagePlaceholder(title: displayNames[device.id] ?? device.model,
                                                                                        detail: nil))
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
