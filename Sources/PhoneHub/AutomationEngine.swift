@@ -58,12 +58,33 @@ final class AutomationEngine {
 
     private var process: StreamingProcess?
     private var configURL: URL?
+    private var apiTask: Task<Void, Never>?
+    private var apiMessages: [LLMMessage] = []
+    private let backendAvailability: (AgentBackend) -> BackendStatus
+    private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
+    private let apiTextCompletion: (AgentBackend, String) async throws -> String
 
     // Interactive-resume state: kept across the awaitingInput pause.
     private var currentPlan: AutomationPlan?
     private var sessionId: String?
     private var pendingQuestion: String?
     private var currentCapture: [CapturedCall] = []
+
+    init(
+        backendAvailability: @escaping (AgentBackend) -> BackendStatus = {
+            BackendAvailability.check($0)
+        },
+        apiRuntimeFactory: @escaping (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime = {
+            try makeConfiguredAPIRuntime(backend: $0, plan: $1)
+        },
+        apiTextCompletion: @escaping (AgentBackend, String) async throws -> String = {
+            try await configuredAPITextCompletion(backend: $0, prompt: $1)
+        }
+    ) {
+        self.backendAvailability = backendAvailability
+        self.apiRuntimeFactory = apiRuntimeFactory
+        self.apiTextCompletion = apiTextCompletion
+    }
 
     var isRunning: Bool {
         if case .running = state { return true }
@@ -123,32 +144,51 @@ final class AutomationEngine {
 
     /// Spawn the selected backend for a prepared plan.
     private func launch(plan: AutomationPlan, preset: Preset, device: Device, header: String) {
-        let backendStatus = BackendAvailability.check(plan.backend)
+        let backendStatus = backendAvailability(plan.backend)
         guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
-        guard let url = writeConfig(plan.mcpConfigJSON) else { return }
-        configURL = url
         currentPlan = plan
         sessionId = nil
         pendingQuestion = nil
         currentCapture = []
         lastCapture = []
+        apiMessages = []
 
         state = .running
         runningPreset = preset
         currentAction = "Starting…"
         log = [header]
 
+        if plan.backend.isAPI {
+            startAPI(plan: plan, prompt: plan.prompt, priorMessages: [])
+            return
+        }
+        guard let url = writeConfig(plan.mcpConfigJSON) else { return }
+        configURL = url
         spawn(executablePath: executablePath, args: plan.arguments(mcpConfigPath: url.path))
     }
 
     /// Resume the paused run with the user's answer (same session + flags).
     func reply(_ text: String) {
         guard case .awaitingInput = state,
-              let plan = currentPlan,
-              let url = configURL else { return }
+              let plan = currentPlan else { return }
+        let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else { return }
+        if plan.backend.isAPI {
+            guard case .available = backendAvailability(plan.backend) else {
+                if case let .missing(hint) = backendAvailability(plan.backend) { fail(hint) }
+                return
+            }
+            pendingQuestion = nil
+            state = .running
+            currentAction = "Resuming…"
+            log.append("You: \(answer)")
+            startAPI(plan: plan, prompt: answer, priorMessages: apiMessages)
+            return
+        }
+        guard let url = configURL else { return }
         // The CLI rotates session_id on every --resume. If we never captured a
         // (non-empty) id, a resume would attach to the wrong/no conversation —
         // fail the run with a clear message instead of spawning a bad resume.
@@ -157,9 +197,7 @@ final class AutomationEngine {
             fail(Self.lostSessionMessage)
             return
         }
-        let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !answer.isEmpty else { return }
-        let backendStatus = BackendAvailability.check(plan.backend)
+        let backendStatus = backendAvailability(plan.backend)
         guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
@@ -189,6 +227,53 @@ final class AutomationEngine {
         } catch {
             fail("Failed to launch \(currentPlan?.backend.rawValue ?? "agent"): \(error)")
             cleanupConfig()
+        }
+    }
+
+    private func startAPI(plan: AutomationPlan, prompt: String,
+                          priorMessages: [LLMMessage]) {
+        let runtime: ApiAgentRuntime
+        do {
+            runtime = try apiRuntimeFactory(plan.backend, plan)
+        } catch {
+            fail(error.localizedDescription)
+            return
+        }
+        apiTask = Task { [weak self] in
+            let result = await runtime.run(
+                systemPreamble: plan.systemPreamble,
+                prompt: prompt,
+                priorMessages: priorMessages,
+                maxToolCalls: plan.maxTurns,
+                serverName: plan.serverName,
+                onEvent: { [weak self] event in
+                    await self?.handle(event: event)
+                }
+            )
+            guard let self, !Task.isCancelled else { return }
+            self.apiMessages = result.messages
+            self.finishAPI(result.outcome)
+        }
+    }
+
+    private func finishAPI(_ outcome: ApiAgentOutcome) {
+        apiTask = nil
+        switch outcome {
+        case .completed:
+            state = .finished
+            currentAction = "Finished"
+            lastCapture = currentCapture
+        case .needsInput(let question):
+            state = .awaitingInput(question: question)
+            currentAction = "Needs input"
+        case .failed(let message):
+            state = .failed(message)
+            currentAction = "Failed"
+        case .maxStepsReached:
+            state = .failed("Step limit reached.")
+            currentAction = "Failed"
+        case .cancelled:
+            if case .running = state { state = .stopped }
         }
     }
 
@@ -222,17 +307,22 @@ final class AutomationEngine {
     func condense(goal: String, rawSteps: [AutomationStep],
                   backend: AgentBackend) async throws -> [AutomationStep] {
         guard !isBusy else { throw CondenseError.backend("A device run is active.") }
-        guard case let .available(path) = BackendAvailability.check(backend) else {
-            if case let .missing(hint) = BackendAvailability.check(backend) {
+        guard case let .available(path) = backendAvailability(backend) else {
+            if case let .missing(hint) = backendAvailability(backend) {
                 throw CondenseError.backend(hint)
             }
             throw CondenseError.backend("\(backend.rawValue) is unavailable.")
         }
         let prompt = try CondensePrompt.prompt(goal: goal, rawSteps: rawSteps)
-        let arguments = CondensePrompt.arguments(prompt: prompt, backend: backend)
         isCondensing = true
         defer { isCondensing = false }
 
+        if backend.isAPI {
+            let text = try await apiTextCompletion(backend, prompt)
+            return try CondensePrompt.parseResponse(text)
+        }
+
+        let arguments = CondensePrompt.arguments(prompt: prompt, backend: backend)
         let result: CommandResult = try await Task.detached(priority: .userInitiated) {
             try runToolAt(path: path, args: arguments, timeout: 120)
         }.value
@@ -265,6 +355,8 @@ final class AutomationEngine {
         // preserved for a resume). Stopping here means no future exit will run
         // cleanupConfig, so do it now to avoid leaking the temp mcp-config file.
         let wasAwaitingInput = isAwaitingInput
+        apiTask?.cancel()
+        apiTask = nil
         process?.stop()
         if isBusy {
             state = .stopped
@@ -281,7 +373,10 @@ final class AutomationEngine {
 
     private func handle(line: String) {
         guard let backend = currentPlan?.backend else { return }
-        let event = parseStreamLine(line, backend: backend)
+        handle(event: parseStreamLine(line, backend: backend))
+    }
+
+    private func handle(event: StreamEvent) {
         // Capture the session id whenever it's advertised. The CLI rotates the
         // id on `--resume`, and a resumed run may only re-advertise it on the
         // final `result` event (not the init `system` event), so we update the

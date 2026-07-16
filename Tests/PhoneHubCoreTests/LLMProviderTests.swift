@@ -72,6 +72,19 @@ final class LLMProviderTests: XCTestCase {
         XCTAssertEqual(router.value(forHTTPHeaderField: "X-Title"), "PhoneHub")
     }
 
+    func testTextOnlyRequestsOmitEmptyTools() throws {
+        let message = LLMMessage(role: .user, content: "Return JSON")
+        let openAI = try json(OpenAIWire.buildRequest(
+            model: "gpt-test", messages: [message], tools: []
+        ))
+        let anthropic = try json(AnthropicWire.buildRequest(
+            model: "claude-test", messages: [message], tools: []
+        ))
+
+        XCTAssertNil(openAI["tools"])
+        XCTAssertNil(anthropic["tools"])
+    }
+
     func testAnthropicRequestUsesSystemAndNativeToolBlocks() throws {
         let call = LLMToolCall(id: "toolu_1", name: "tap", argumentsJSON: #"{"x":42}"#)
         let messages = [

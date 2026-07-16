@@ -60,12 +60,12 @@ final class ApiAgentRuntimeTests: XCTestCase {
         let runtime = ApiAgentRuntime(provider: provider, client: client)
         let events = EventRecorder()
 
-        let outcome = await runtime.run(
+        let result = await runtime.run(
             systemPreamble: "system", prompt: "goal", priorMessages: [],
             maxToolCalls: 4, serverName: "mirroir", onEvent: { events.append($0) }
         )
 
-        XCTAssertEqual(outcome, .completed("Done."))
+        XCTAssertEqual(result.outcome, .completed("Done."))
         XCTAssertEqual(client.calls.map(\.name), ["tap"])
         XCTAssertEqual(client.calls.first?.arguments["x"] as? Int, 12)
         XCTAssertEqual(events.values, [
@@ -84,12 +84,14 @@ final class ApiAgentRuntimeTests: XCTestCase {
         let runtime = ApiAgentRuntime(provider: provider, client: client)
         let events = EventRecorder()
 
-        let outcome = await runtime.run(
+        let result = await runtime.run(
             systemPreamble: "system", prompt: "goal", priorMessages: [],
             maxToolCalls: 2, serverName: "mirroir", onEvent: { events.append($0) }
         )
 
-        XCTAssertEqual(outcome, .needsInput("Log in first?"))
+        XCTAssertEqual(result.outcome, .needsInput("Log in first?"))
+        XCTAssertEqual(result.messages.last,
+                       LLMMessage(role: .assistant, content: "NEED_INPUT: Log in first?"))
         XCTAssertEqual(events.values, [.needInput(question: "Log in first?")])
         XCTAssertTrue(client.calls.isEmpty)
     }
@@ -102,11 +104,11 @@ final class ApiAgentRuntimeTests: XCTestCase {
         ])
         let invalidClient = RecordingMCPClient(result: McpToolResult(text: "", isError: false))
         let invalidEvents = EventRecorder()
-        let invalidOutcome = await ApiAgentRuntime(provider: invalidProvider, client: invalidClient).run(
+        let invalidResult = await ApiAgentRuntime(provider: invalidProvider, client: invalidClient).run(
             systemPreamble: "system", prompt: "goal", priorMessages: [],
             maxToolCalls: 2, serverName: "mirroir", onEvent: { invalidEvents.append($0) }
         )
-        XCTAssertEqual(invalidOutcome, .failed("The model returned invalid tool arguments."))
+        XCTAssertEqual(invalidResult.outcome, .failed("The model returned invalid tool arguments."))
         XCTAssertTrue(invalidClient.calls.isEmpty)
 
         let calls = [
@@ -115,11 +117,11 @@ final class ApiAgentRuntimeTests: XCTestCase {
         ]
         let cappedProvider = SequenceProvider([LLMResponse(text: nil, toolCalls: calls)])
         let cappedClient = RecordingMCPClient(result: McpToolResult(text: "ok", isError: false))
-        let cappedOutcome = await ApiAgentRuntime(provider: cappedProvider, client: cappedClient).run(
+        let cappedResult = await ApiAgentRuntime(provider: cappedProvider, client: cappedClient).run(
             systemPreamble: "system", prompt: "goal", priorMessages: [],
             maxToolCalls: 1, serverName: "mirroir", onEvent: { _ in }
         )
-        XCTAssertEqual(cappedOutcome, .maxStepsReached)
+        XCTAssertEqual(cappedResult.outcome, .maxStepsReached)
         XCTAssertEqual(cappedClient.calls.map(\.name), ["press_home"])
     }
 

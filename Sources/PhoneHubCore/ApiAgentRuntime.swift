@@ -23,6 +23,16 @@ public enum ApiAgentOutcome: Equatable, Sendable {
     case cancelled
 }
 
+public struct ApiAgentRunResult: Equatable, Sendable {
+    public let outcome: ApiAgentOutcome
+    public let messages: [LLMMessage]
+
+    public init(outcome: ApiAgentOutcome, messages: [LLMMessage]) {
+        self.outcome = outcome
+        self.messages = messages
+    }
+}
+
 public enum ApiAgentRuntimeError: Error, LocalizedError, Equatable {
     case invalidMCPConfiguration
     case invalidToolArguments
@@ -60,7 +70,8 @@ public final class ApiAgentRuntime: @unchecked Sendable {
     }
 
     public static func live(provider: any LLMProvider,
-                            plan: AutomationPlan) throws -> ApiAgentRuntime {
+                            plan: AutomationPlan,
+                            sensitiveValues: [String] = []) throws -> ApiAgentRuntime {
         let configuration = try mcpLaunchConfiguration(plan: plan)
         let executable: String
         let arguments: [String]
@@ -76,7 +87,8 @@ public final class ApiAgentRuntime: @unchecked Sendable {
         }
         return ApiAgentRuntime(
             provider: provider,
-            client: McpDirectClient(command: executable, arguments: arguments)
+            client: McpDirectClient(command: executable, arguments: arguments),
+            sensitiveValues: sensitiveValues
         )
     }
 
@@ -94,16 +106,19 @@ public final class ApiAgentRuntime: @unchecked Sendable {
                     priorMessages: [LLMMessage],
                     maxToolCalls: Int,
                     serverName: String,
-                    onEvent: @escaping @Sendable (StreamEvent) -> Void) async -> ApiAgentOutcome {
+                    onEvent: @escaping @Sendable (StreamEvent) async -> Void) async -> ApiAgentRunResult {
+        var messages = [LLMMessage(role: .system, content: systemPreamble)] + priorMessages
+        if !prompt.isEmpty { messages.append(LLMMessage(role: .user, content: prompt)) }
         do {
             try await client.start()
         } catch {
-            return fail(error.localizedDescription, onEvent: onEvent)
+            return ApiAgentRunResult(
+                outcome: await fail(redact(error.localizedDescription), onEvent: onEvent),
+                messages: transcript(messages)
+            )
         }
         defer { client.stop() }
 
-        var messages = [LLMMessage(role: .system, content: systemPreamble)] + priorMessages
-        if !prompt.isEmpty { messages.append(LLMMessage(role: .user, content: prompt)) }
         let tools = phoneControlTools(serverName: serverName)
         var toolCallCount = 0
 
@@ -116,32 +131,45 @@ public final class ApiAgentRuntime: @unchecked Sendable {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch let error as LLMProviderError {
-                    return fail(redact(error.localizedDescription), onEvent: onEvent)
+                    return ApiAgentRunResult(
+                        outcome: await fail(redact(error.localizedDescription), onEvent: onEvent),
+                        messages: transcript(messages)
+                    )
                 } catch {
-                    return fail("The LLM provider request failed.", onEvent: onEvent)
+                    return ApiAgentRunResult(
+                        outcome: await fail("The LLM provider request failed.", onEvent: onEvent),
+                        messages: transcript(messages)
+                    )
                 }
 
                 switch Self.decision(for: response) {
                 case .needInput(let question):
-                    onEvent(.needInput(question: question))
-                    return .needsInput(question)
+                    messages.append(LLMMessage(role: .assistant, content: response.text))
+                    await onEvent(.needInput(question: question))
+                    return ApiAgentRunResult(outcome: .needsInput(question),
+                                             messages: transcript(messages))
                 case .complete(let text):
-                    if let text, !text.isEmpty { onEvent(.assistantText(text)) }
-                    onEvent(.result(subtype: "success", text: nil, sessionId: nil))
-                    return .completed(text)
+                    if let text, !text.isEmpty {
+                        messages.append(LLMMessage(role: .assistant, content: text))
+                        await onEvent(.assistantText(text))
+                    }
+                    await onEvent(.result(subtype: "success", text: nil, sessionId: nil))
+                    return ApiAgentRunResult(outcome: .completed(text),
+                                             messages: transcript(messages))
                 case .callTools:
-                    if let text = response.text, !text.isEmpty { onEvent(.assistantText(text)) }
+                    if let text = response.text, !text.isEmpty { await onEvent(.assistantText(text)) }
                     messages.append(LLMMessage(role: .assistant, content: response.text,
                                                toolCalls: response.toolCalls))
                     for call in response.toolCalls {
                         guard toolCallCount < maxToolCalls else {
-                            onEvent(.result(subtype: "error", text: "Step limit reached.",
-                                            sessionId: nil))
-                            return .maxStepsReached
+                            await onEvent(.result(subtype: "error", text: "Step limit reached.",
+                                                  sessionId: nil))
+                            return ApiAgentRunResult(outcome: .maxStepsReached,
+                                                     messages: transcript(messages))
                         }
                         let arguments = try Self.decodeArguments(call.argumentsJSON)
                         let rawInput = StreamJSONParser.jsonString(input: arguments)
-                        onEvent(.toolUse(
+                        await onEvent(.toolUse(
                             name: call.name,
                             summary: StreamJSONParser.summarize(input: arguments),
                             rawInput: rawInput
@@ -150,7 +178,7 @@ public final class ApiAgentRuntime: @unchecked Sendable {
                         let result = try await client.callTool(
                             call.name, arguments: arguments, timeoutSeconds: 30
                         )
-                        onEvent(.toolResult(result.text))
+                        await onEvent(.toolResult(result.text))
                         messages.append(LLMMessage(
                             role: .tool,
                             content: result.text,
@@ -161,9 +189,12 @@ public final class ApiAgentRuntime: @unchecked Sendable {
                 }
             }
         } catch is CancellationError {
-            return .cancelled
+            return ApiAgentRunResult(outcome: .cancelled, messages: transcript(messages))
         } catch {
-            return fail(redact(error.localizedDescription), onEvent: onEvent)
+            return ApiAgentRunResult(
+                outcome: await fail(redact(error.localizedDescription), onEvent: onEvent),
+                messages: transcript(messages)
+            )
         }
     }
 
@@ -177,9 +208,13 @@ public final class ApiAgentRuntime: @unchecked Sendable {
     }
 
     private func fail(_ message: String,
-                      onEvent: @Sendable (StreamEvent) -> Void) -> ApiAgentOutcome {
-        onEvent(.result(subtype: "error", text: message, sessionId: nil))
+                      onEvent: @Sendable (StreamEvent) async -> Void) async -> ApiAgentOutcome {
+        await onEvent(.result(subtype: "error", text: message, sessionId: nil))
         return .failed(message)
+    }
+
+    private func transcript(_ messages: [LLMMessage]) -> [LLMMessage] {
+        messages.filter { $0.role != .system }
     }
 
     private func redact(_ message: String) -> String {

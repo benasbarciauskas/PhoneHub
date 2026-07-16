@@ -48,4 +48,17 @@ final class BackendAvailabilityTests: XCTestCase {
             )
         }
     }
+
+    func testAPIAvailabilityUsesKeyLookupWithoutExposingValue() {
+        for backend in [AgentBackend.openrouter, .openai, .anthropic] {
+            XCTAssertEqual(
+                BackendAvailability.check(
+                    backend,
+                    resolver: { _ in XCTFail("API backend must not resolve a binary"); return nil },
+                    keyLookup: { provider in provider == backend.rawValue ? "fixture-value" : nil }
+                ),
+                .available(path: "api")
+            )
+        }
+    }
 }

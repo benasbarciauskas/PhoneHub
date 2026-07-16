@@ -55,6 +55,29 @@ final class ChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.chat.messages.first?.text, "Use codex")
     }
 
+    func testSendWithAPIBackendStoresFinalAssistantText() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let provider = AppSequenceProvider([
+            LLMResponse(text: "The screen shows Settings.", toolCalls: [])
+        ])
+        let client = AppRecordingMCPClient()
+        let engine = ChatEngine(
+            store: ChatStore(directory: directory),
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, _ in ApiAgentRuntime(provider: provider, client: client) }
+        )
+
+        XCTAssertTrue(engine.send("What is visible?", on: device,
+                                  backend: .anthropic, presetEngineBusy: false))
+        try await waitUntil { !engine.isBusy }
+
+        XCTAssertEqual(engine.chat.messages.map(\.role), [.user, .assistant])
+        XCTAssertEqual(engine.chat.messages.last?.text, "The screen shows Settings.")
+        XCTAssertTrue(client.started)
+        XCTAssertTrue(client.stopped)
+    }
+
     private func makeEngine(
         backendStatus: BackendStatus = .available(path: "/usr/bin/false")
     ) -> ChatEngine {
@@ -64,5 +87,12 @@ final class ChatEngineTests: XCTestCase {
             store: ChatStore(directory: directory),
             backendAvailability: { _ in backendStatus }
         )
+    }
+
+    private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
+        for _ in 0..<100 where !predicate() {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(predicate())
     }
 }

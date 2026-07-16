@@ -33,11 +33,12 @@ public enum OpenAIWire {
                 ]
             ] as [String: Any]
         }
-        return try LLMWireJSON.data([
+        var root: [String: Any] = [
             "model": model,
-            "messages": wireMessages,
-            "tools": wireTools
-        ])
+            "messages": wireMessages
+        ]
+        if !wireTools.isEmpty { root["tools"] = wireTools }
+        return try LLMWireJSON.data(root)
     }
 
     public static func parseResponse(_ data: Data) throws -> LLMResponse {

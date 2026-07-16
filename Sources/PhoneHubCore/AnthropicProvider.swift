@@ -53,10 +53,10 @@ public enum AnthropicWire {
         var root: [String: Any] = [
             "model": model,
             "max_tokens": 4096,
-            "messages": wireMessages,
-            "tools": wireTools
+            "messages": wireMessages
         ]
         if !system.isEmpty { root["system"] = system }
+        if !wireTools.isEmpty { root["tools"] = wireTools }
         return try LLMWireJSON.data(root)
     }
 

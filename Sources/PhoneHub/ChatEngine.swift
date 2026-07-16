@@ -17,7 +17,9 @@ final class ChatEngine {
 
     private let store: ChatStore
     private let backendAvailability: (AgentBackend) -> BackendStatus
+    private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     private var process: StreamingProcess?
+    private var apiTask: Task<Void, Never>?
     private var configURL: URL?
     private var boundDeviceId: String?
     private var currentPlan: AutomationPlan?
@@ -29,9 +31,13 @@ final class ChatEngine {
 
     init(store: ChatStore = ChatStore(
         directory: PresetStore.defaultDirectory().appendingPathComponent("chats", isDirectory: true)
-    ), backendAvailability: @escaping (AgentBackend) -> BackendStatus = { BackendAvailability.check($0) }) {
+    ), backendAvailability: @escaping (AgentBackend) -> BackendStatus = { BackendAvailability.check($0) },
+         apiRuntimeFactory: @escaping (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime = {
+             try makeConfiguredAPIRuntime(backend: $0, plan: $1)
+         }) {
         self.store = store
         self.backendAvailability = backendAvailability
+        self.apiRuntimeFactory = apiRuntimeFactory
     }
 
     var isBusy: Bool {
@@ -99,6 +105,8 @@ final class ChatEngine {
 
     func stop() {
         guard isBusy else { return }
+        apiTask?.cancel()
+        apiTask = nil
         process?.stop()
         process = nil
         flushStreaming(suffix: " — (stopped)")
@@ -118,12 +126,18 @@ final class ChatEngine {
     }
 
     func shutdown() {
+        apiTask?.cancel()
+        apiTask = nil
         process?.stop()
         process = nil
         cleanupConfig()
     }
 
     private func start(plan: AutomationPlan, asResume: Bool) {
+        if plan.backend.isAPI {
+            startAPI(plan: plan)
+            return
+        }
         guard let executablePath else { return }
         if configURL == nil {
             guard let url = writeConfig(plan.mcpConfigJSON) else { return }
@@ -151,6 +165,59 @@ final class ChatEngine {
         spawn(executablePath: executablePath, args: args)
     }
 
+    private func startAPI(plan: AutomationPlan) {
+        let runtime: ApiAgentRuntime
+        do {
+            runtime = try apiRuntimeFactory(plan.backend, plan)
+        } catch {
+            fail(error.localizedDescription)
+            return
+        }
+        let priorMessages = chat.messages.dropLast().compactMap { message -> LLMMessage? in
+            switch message.role {
+            case .user: return LLMMessage(role: .user, content: message.text)
+            case .assistant: return LLMMessage(role: .assistant, content: message.text)
+            case .tool, .system: return nil
+            }
+        }
+        isResumeTurn = false
+        streamingText = ""
+        resultFailure = nil
+        turnState = .running
+        apiTask = Task { [weak self] in
+            let result = await runtime.run(
+                systemPreamble: plan.systemPreamble,
+                prompt: self?.pendingText ?? "",
+                priorMessages: priorMessages,
+                maxToolCalls: plan.maxTurns,
+                serverName: plan.serverName,
+                onEvent: { [weak self] event in await self?.handle(event: event) }
+            )
+            guard let self, !Task.isCancelled else { return }
+            self.finishAPI(result.outcome)
+        }
+    }
+
+    private func finishAPI(_ outcome: ApiAgentOutcome) {
+        apiTask = nil
+        guard isBusy else { return }
+        flushStreaming()
+        switch outcome {
+        case .completed, .needsInput:
+            turnState = .idle
+        case .failed(let message):
+            if chat.messages.last?.text != message { append(.system, message) }
+            turnState = .failed(message)
+        case .maxStepsReached:
+            let message = "Step limit reached."
+            append(.system, message)
+            turnState = .failed(message)
+        case .cancelled:
+            turnState = .idle
+        }
+        persist()
+    }
+
     private func spawn(executablePath: String, args: [String]) {
         let proc = StreamingProcess(executablePath: executablePath, arguments: args)
         process = proc
@@ -170,7 +237,10 @@ final class ChatEngine {
     }
 
     private func handle(line: String) {
-        let event = parseStreamLine(line, backend: currentPlan?.backend ?? chat.backend)
+        handle(event: parseStreamLine(line, backend: currentPlan?.backend ?? chat.backend))
+    }
+
+    private func handle(event: StreamEvent) {
         if case let .system(_, sessionId) = event, let sessionId, !sessionId.isEmpty {
             chat.sessionId = sessionId
             persist()

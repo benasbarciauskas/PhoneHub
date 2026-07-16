@@ -54,6 +54,19 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertEqual(plan.backend, AgentBackend.claude)
     }
 
+    func testAPIPlansKeepMCPWiringWithoutCLIArguments() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios], maxSteps: 10)
+        for backend in [AgentBackend.openrouter, .openai, .anthropic] {
+            let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: backend)
+            XCTAssertEqual(plan.backend, backend)
+            XCTAssertEqual(plan.serverName, "mirroir")
+            XCTAssertTrue(plan.mcpConfigJSON.contains("mirroir-mcp"))
+            XCTAssertEqual(plan.arguments(mcpConfigPath: "/tmp/unused"), [])
+            XCTAssertEqual(plan.resumeArguments(sessionId: "unused", reply: "reply",
+                                                mcpConfigPath: "/tmp/unused"), [])
+        }
+    }
+
     func testPresetBackendOverridesAppDefault() throws {
         let preset = Preset(name: "p", goal: "g", platforms: [.ios], backend: .claude)
         let plan = try buildAutomationPlan(preset: preset, device: iosDevice, backend: .codex)
