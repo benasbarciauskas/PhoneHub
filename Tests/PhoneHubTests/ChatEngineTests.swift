@@ -42,6 +42,7 @@ final class ChatEngineTests: XCTestCase {
             store: store,
             backendAvailability: { _ in .available(path: "/usr/bin/false") }
         )
+        engine.commandGate = { _ in nil }
 
         let accepted = engine.send(
             "Use codex",
@@ -67,6 +68,7 @@ final class ChatEngineTests: XCTestCase {
             backendAvailability: { _ in .available(path: "api") },
             apiRuntimeFactory: { _, _ in ApiAgentRuntime(provider: provider, client: client) }
         )
+        engine.commandGate = { _ in nil }
 
         XCTAssertTrue(engine.send("What is visible?", on: device,
                                   backend: .anthropic, presetEngineBusy: false))
@@ -94,6 +96,7 @@ final class ChatEngineTests: XCTestCase {
             },
             screenCapturePolicyProvider: { .disabled }
         )
+        engine.commandGate = { _ in nil }
 
         XCTAssertTrue(engine.send(
             "What is visible?", on: device, backend: .openai, presetEngineBusy: false
@@ -111,10 +114,12 @@ final class ChatEngineTests: XCTestCase {
     ) -> ChatEngine {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        return ChatEngine(
+        let engine = ChatEngine(
             store: ChatStore(directory: directory),
             backendAvailability: { _ in backendStatus }
         )
+        engine.commandGate = { _ in nil }
+        return engine
     }
 
     private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {

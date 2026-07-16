@@ -20,6 +20,7 @@ final class DeviceStoreTests: XCTestCase {
         let remaining = Device(id: "android", platform: .android, model: "Pixel",
                                osVersion: "16", status: "device")
         let store = DeviceStore()
+        store.mirrorPresenceProvider = { false }
         store.devices = [removed, remaining]
         store.focusedDevice = removed
 
@@ -49,6 +50,7 @@ final class DeviceStoreTests: XCTestCase {
         let connected = Device(id: stale.id, platform: .ios, model: stale.model,
                                osVersion: stale.osVersion, status: "connected")
         let store = DeviceStore()
+        store.mirrorPresenceProvider = { false }
         store.devices = [stale]
 
         store.remove(deviceId: stale.id)

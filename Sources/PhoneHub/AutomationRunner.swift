@@ -42,18 +42,17 @@ final class AutomationRunner {
     }
 
     init(store: AutomationStore, agentEngine: AutomationEngine,
-         textSourceStore: TextSourceStore? = nil,
-         commandGate: @escaping (Device?) -> String? = { device in
-             llmCommandBlockReason(device: device,
-                                   iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
-         }) {
+         textSourceStore: TextSourceStore? = nil) {
         self.store = store
         self.agentEngine = agentEngine
         self.textSourceStore = textSourceStore ?? TextSourceStore()
-        self.commandGate = commandGate
     }
 
-    private let commandGate: (Device?) -> String?
+    /// Settable so tests can bypass live mirror-window sensing.
+    var commandGate: (Device?) -> String? = { device in
+        llmCommandBlockReason(device: device,
+                              iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
+    }
 
     var isBusy: Bool {
         switch state {

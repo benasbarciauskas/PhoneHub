@@ -30,6 +30,7 @@ final class AutomationEngineTests: XCTestCase {
             backendAvailability: { _ in .available(path: "api") },
             apiRuntimeFactory: { _, _ in ApiAgentRuntime(provider: provider, client: client) }
         )
+        engine.commandGate = { _ in nil }
         let preset = Preset(name: "API run", goal: "Open Settings", platforms: [.ios])
         let device = Device(id: "ios", platform: .ios, model: "iPhone",
                             osVersion: "18", status: "connected")
@@ -55,6 +56,7 @@ final class AutomationEngineTests: XCTestCase {
             },
             screenCapturePolicyProvider: { .disabled }
         )
+        engine.commandGate = { _ in nil }
         let preset = Preset(name: "Private run", goal: "Open Settings", platforms: [.ios])
         let device = Device(id: "ios", platform: .ios, model: "iPhone",
                             osVersion: "18", status: "connected")
@@ -83,6 +85,7 @@ final class AutomationEngineTests: XCTestCase {
                 return ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
             }
         )
+        engine.commandGate = { _ in nil }
         let device = Device(id: "ios", platform: .ios, model: "iPhone",
                             osVersion: "18", status: "connected")
 
@@ -112,6 +115,7 @@ final class AutomationEngineTests: XCTestCase {
                 ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
             }
         )
+        engine.commandGate = { _ in nil }
         engine.runHistoryStore = history
         let preset = Preset(name: "Hist preset", goal: "Tap Home", platforms: [.ios])
         let device = Device(id: "hist-ios", platform: .ios, model: "iPhone 15",
@@ -139,6 +143,7 @@ final class AutomationEngineTests: XCTestCase {
                 return "[]"
             }
         )
+        engine.commandGate = { _ in nil }
 
         let result = try await engine.condense(goal: "Open Settings", rawSteps: [],
                                                backend: .openrouter)
@@ -157,6 +162,7 @@ final class AutomationEngineTests: XCTestCase {
                 return "Open Settings and enable notifications"
             }
         )
+        engine.commandGate = { _ in nil }
 
         let description = try await engine.describeRecording(
             rawSteps: [.tap(id: UUID(), label: nil, x: 10, y: 20)],
