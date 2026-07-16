@@ -298,7 +298,7 @@ func clearDockedIPhoneMirroringWindows() {
 }
 
 @MainActor
-private func trackDockedIPhoneMirroringWindow(processIdentifier: pid_t) {
+func trackDockedIPhoneMirroringWindow(processIdentifier: pid_t) {
     dockedIPhoneMirroringProcessIDs.insert(processIdentifier)
 }
 
@@ -310,7 +310,7 @@ private func roundedSizeKey(_ size: CGSize) -> String {
     "\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
 }
 
-private func readAXSize(_ window: AXUIElement) -> CGSize? {
+func readAXSize(_ window: AXUIElement) -> CGSize? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &value) == .success,
           let value,
@@ -372,7 +372,7 @@ private func setAXPosition(_ window: AXUIElement, to point: CGPoint) -> Bool {
 
 /// Keep raise on the same deduplicated path as the AX position write. Raising
 /// after the write restores z-order without activating PhoneHub or opening menus.
-private func repositionAXWindowIfNeeded(_ window: AXUIElement, to point: CGPoint) -> Bool {
+func repositionAXWindowIfNeeded(_ window: AXUIElement, to point: CGPoint) -> Bool {
     guard shouldRepositionWindow(current: readAXPosition(window), target: point, tolerance: 1) else {
         return true
     }
@@ -403,7 +403,7 @@ func firstAXMenu(from menuBarItem: AXUIElement) -> AXUIElement? {
     }
 }
 
-private func firstWindow(in appElement: AXUIElement) -> AXUIElement? {
+func firstWindow(in appElement: AXUIElement) -> AXUIElement? {
     guard let windows = copyAXAttribute(appElement, kAXWindowsAttribute as CFString) as? [AXUIElement] else {
         return nil
     }
@@ -423,7 +423,7 @@ private func sizesAreEffectivelyEqual(_ lhs: CGSize, _ rhs: CGSize) -> Bool {
 }
 
 @MainActor
-private func findWindow(title: String, processIdentifier: pid_t) -> AXUIElement? {
+func findWindow(title: String, processIdentifier: pid_t) -> AXUIElement? {
     let appElement = AXUIElementCreateApplication(processIdentifier)
     AXUIElementSetMessagingTimeout(appElement, 0.2)
 
@@ -439,7 +439,7 @@ private func findWindow(title: String, processIdentifier: pid_t) -> AXUIElement?
 }
 
 @MainActor
-private func findRunningApplication(ownerName: String) -> NSRunningApplication? {
+func findRunningApplication(ownerName: String) -> NSRunningApplication? {
     let running = NSWorkspace.shared.runningApplications
     return running.first { $0.bundleIdentifier == ownerName }
         ?? running.first { $0.localizedName == ownerName }

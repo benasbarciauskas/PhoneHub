@@ -54,6 +54,8 @@ func stageNotConnectedIOSPlaceholder(for device: Device,
 final class StageState {
     var activeDevice: Device?
     var stageRect: CGRect = .zero
+    /// PhoneHub window frame in AX coordinates (for Companion side-docking).
+    var phoneHubFrame: CGRect = .zero
     var isDocked = false
     var wallAndroidSerials: Set<String> = []
     var wallIOSDeviceID: String?
@@ -190,7 +192,8 @@ struct PlaceholderView: View {
 
 struct StageRectReader: NSViewRepresentable {
     let onChange: (CGRect) -> Void
-    let onWindowFrameChange: () -> Void
+    /// Full PhoneHub window frame in AX coordinates, then a move/resize signal.
+    let onWindowFrameChange: (CGRect) -> Void
 
     func makeNSView(context: Context) -> ReportingView {
         ReportingView(onChange: onChange,
@@ -205,13 +208,14 @@ struct StageRectReader: NSViewRepresentable {
 
     final class ReportingView: NSView {
         var onChange: (CGRect) -> Void
-        var onWindowFrameChange: () -> Void
+        var onWindowFrameChange: (CGRect) -> Void
         private weak var observedWindow: NSWindow?
         private var observerTokens: [NSObjectProtocol] = []
         private var lastReportedRect: CGRect?
+        private var lastReportedWindowFrame: CGRect?
 
         init(onChange: @escaping (CGRect) -> Void,
-             onWindowFrameChange: @escaping () -> Void) {
+             onWindowFrameChange: @escaping (CGRect) -> Void) {
             self.onChange = onChange
             self.onWindowFrameChange = onWindowFrameChange
             super.init(frame: .zero)
@@ -238,6 +242,7 @@ struct StageRectReader: NSViewRepresentable {
 
         func report() {
             guard let window else { return }
+            reportWindowFrame(window)
             let rectInWindow = convert(bounds, to: nil)
             let screenRect = window.convertToScreen(rectInWindow)
             let axRect = screenRect.convertedToAXCoordinates()
@@ -247,6 +252,17 @@ struct StageRectReader: NSViewRepresentable {
             lastReportedRect = axRect
             DispatchQueue.main.async {
                 self.onChange(axRect)
+            }
+        }
+
+        private func reportWindowFrame(_ window: NSWindow) {
+            let axFrame = window.frame.convertedToAXCoordinates()
+            guard lastReportedWindowFrame.map({ !rectsEffectivelyEqual($0, axFrame, tolerance: 1) }) ?? true else {
+                return
+            }
+            lastReportedWindowFrame = axFrame
+            DispatchQueue.main.async {
+                self.onWindowFrameChange(axFrame)
             }
         }
 
@@ -265,7 +281,6 @@ struct StageRectReader: NSViewRepresentable {
             observerTokens = notifications.map { name in
                 center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                     self?.report()
-                    self?.onWindowFrameChange()
                 }
             }
         }
