@@ -10,7 +10,7 @@ final class CodexStreamParserTests: XCTestCase {
             (#"{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}"#,
              .assistantText("OK")),
             (#"{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"mirroir","tool":"status","arguments":{},"result":null,"error":null,"status":"in_progress"}}"#,
-             .toolUse(name: "status", summary: "")),
+             .toolUse(name: "status", summary: "", rawInput: "{}")),
             (#"{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"mirroir","tool":"status","arguments":{},"result":{"content":[{"type":"text","text":"Connected — mirroring active"}],"structured_content":null},"error":null,"status":"completed"}}"#,
              .toolResult("Connected — mirroring active")),
             (#"{"type":"turn.completed","usage":{"input_tokens":21820,"cached_input_tokens":9984,"output_tokens":5,"reasoning_output_tokens":0}}"#,
@@ -31,7 +31,8 @@ final class CodexStreamParserTests: XCTestCase {
     func testSummarizesMCPArguments() {
         let line = #"{"type":"item.started","item":{"type":"mcp_tool_call","server":"androir","tool":"tap","arguments":{"serial":"ABC123","x":12,"y":34},"status":"in_progress"}}"#
         XCTAssertEqual(CodexStreamParser.parseLine(line),
-                       .toolUse(name: "tap", summary: "serial=ABC123 x=12 y=34"))
+                       .toolUse(name: "tap", summary: "serial=ABC123 x=12 y=34",
+                                rawInput: #"{"serial":"ABC123","x":12,"y":34}"#))
     }
 
     func testMapsMCPErrorAndFailedTurn() {

@@ -29,7 +29,8 @@ public enum CodexStreamParser {
             }
             let name = item["tool"] as? String ?? "tool"
             return .toolUse(name: StreamJSONParser.shortToolName(name),
-                            summary: StreamJSONParser.summarize(input: item["arguments"]))
+                            summary: StreamJSONParser.summarize(input: item["arguments"]),
+                            rawInput: StreamJSONParser.jsonString(input: item["arguments"]))
 
         case "item.completed":
             guard let item = object["item"] as? [String: Any],

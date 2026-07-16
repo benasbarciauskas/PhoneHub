@@ -185,7 +185,7 @@ final class ChatEngine {
         case let .assistantText(text):
             if !streamingText.isEmpty { streamingText += "\n" }
             streamingText += text
-        case let .toolUse(name, _):
+        case let .toolUse(name, _, _):
             append(.tool, "▸ \(name)")
         case let .result(subtype, text, _):
             if streamingText.isEmpty, let text, !text.isEmpty { streamingText = text }

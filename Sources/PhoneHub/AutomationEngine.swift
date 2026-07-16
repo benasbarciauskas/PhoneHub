@@ -53,6 +53,8 @@ final class AutomationEngine {
     private(set) var currentAction: String?
     private(set) var runningPreset: Preset?
     private(set) var isRefining = false
+    private(set) var isCondensing = false
+    private(set) var lastCapture: [CapturedCall] = []
 
     private var process: StreamingProcess?
     private var configURL: URL?
@@ -61,6 +63,7 @@ final class AutomationEngine {
     private var currentPlan: AutomationPlan?
     private var sessionId: String?
     private var pendingQuestion: String?
+    private var currentCapture: [CapturedCall] = []
 
     var isRunning: Bool {
         if case .running = state { return true }
@@ -130,6 +133,8 @@ final class AutomationEngine {
         currentPlan = plan
         sessionId = nil
         pendingQuestion = nil
+        currentCapture = []
+        lastCapture = []
 
         state = .running
         runningPreset = preset
@@ -214,6 +219,32 @@ final class AutomationEngine {
         return out
     }
 
+    func condense(goal: String, rawSteps: [AutomationStep],
+                  backend: AgentBackend) async throws -> [AutomationStep] {
+        guard !isBusy else { throw CondenseError.backend("A device run is active.") }
+        guard case let .available(path) = BackendAvailability.check(backend) else {
+            if case let .missing(hint) = BackendAvailability.check(backend) {
+                throw CondenseError.backend(hint)
+            }
+            throw CondenseError.backend("\(backend.rawValue) is unavailable.")
+        }
+        let prompt = try CondensePrompt.prompt(goal: goal, rawSteps: rawSteps)
+        let arguments = CondensePrompt.arguments(prompt: prompt, backend: backend)
+        isCondensing = true
+        defer { isCondensing = false }
+
+        let result: CommandResult = try await Task.detached(priority: .userInitiated) {
+            try runToolAt(path: path, args: arguments, timeout: 120)
+        }.value
+        guard result.exitCode == 0 else {
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw CondenseError.backend(stderr.isEmpty
+                ? "\(backend.rawValue) exited with code \(result.exitCode)" : stderr)
+        }
+        let output = String(decoding: result.stdout, as: UTF8.self)
+        return try CondensePrompt.parseResponse(output)
+    }
+
     /// Clear a finished/stopped/failed run from the UI and return to the list.
     func dismissResult() {
         guard !isBusy else { return }
@@ -265,6 +296,9 @@ final class AutomationEngine {
         if case let .needInput(question) = event {
             pendingQuestion = question
         }
+        if case let .toolUse(name, _, rawInput) = event {
+            currentCapture.append(CapturedCall(tool: name, rawInput: rawInput))
+        }
         guard let update = StreamJSONParser.update(for: event) else { return }
         if let logLine = update.logLine { log.append(logLine) }
         if let action = update.currentAction { currentAction = action }
@@ -289,6 +323,7 @@ final class AutomationEngine {
             if code == 0 {
                 state = .finished
                 currentAction = "Finished"
+                lastCapture = currentCapture
             } else {
                 let backend = currentPlan?.backend.rawValue ?? "agent"
                 let msg = reason.isEmpty ? "\(backend) exited with code \(code)" : "\(backend) \(reason)"
@@ -335,6 +370,10 @@ final class AutomationEngine {
     static func canResume(sessionId: String?) -> Bool {
         guard let id = sessionId else { return false }
         return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func clearCapture() {
+        lastCapture = []
     }
 
 }

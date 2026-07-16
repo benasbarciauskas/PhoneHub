@@ -5,6 +5,11 @@ import PhoneHubCore
 
 struct Stage: View {
     @Bindable var store: DeviceStore
+    @Bindable var automationStore: AutomationStore
+    var automationRunner: AutomationRunner
+    var presetEngine: AutomationEngine
+    var chatEngine: ChatEngine
+    let agentBackend: AgentBackend
 
     @State private var scrcpyController = ScrcpyController()
     @State private var mirroringController = MirroringController()
@@ -41,6 +46,13 @@ struct Stage: View {
                 .padding(.bottom, Theme.s4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
+
+            PinnedAutomationBar(store: automationStore, runner: automationRunner,
+                                focused: store.focusedDevice,
+                                othersBusy: presetEngine.isBusy || chatEngine.isBusy,
+                                backend: agentBackend)
+                .padding(.top, Theme.s3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(StageRectReader { rect in
             stageState.stageRect = rect
