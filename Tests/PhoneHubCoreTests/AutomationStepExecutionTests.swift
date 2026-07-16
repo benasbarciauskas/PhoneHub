@@ -50,5 +50,7 @@ final class AutomationStepExecutionTests: XCTestCase {
     func testRunnerOnlyStepsReturnNil() throws {
         XCTAssertNil(try toolInvocation(for: .wait(id: id, ms: 10), platform: .ios, serial: nil, binding: nil))
         XCTAssertNil(try toolInvocation(for: .aiStep(id: id, prompt: "help"), platform: .ios, serial: nil, binding: nil))
+        XCTAssertNil(try toolInvocation(for: .switchDevice(id: id, deviceRef: "Pixel 8"),
+                                        platform: .ios, serial: nil, binding: nil))
     }
 }

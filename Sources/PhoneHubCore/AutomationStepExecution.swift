@@ -86,7 +86,7 @@ public func toolInvocation(for step: AutomationStep, platform: Platform,
         ])
     case let .openURL(_, url):
         invocation = ToolInvocation(tool: "open_url", arguments: ["url": .string(url)])
-    case .wait, .aiStep:
+    case .wait, .aiStep, .switchDevice:
         return nil
     }
 
