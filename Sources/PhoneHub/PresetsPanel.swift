@@ -16,6 +16,7 @@ struct PresetsPanel: View {
     @State private var editing: Preset?
     @State private var showingSheet = false
     @State private var prefillGoal = ""
+    @State private var sharing: CommunityShareItem?
 
     // Free-form command box.
     @State private var command = ""
@@ -77,6 +78,9 @@ struct PresetsPanel: View {
                     store.add(result)
                 }
             }
+        }
+        .sheet(item: $sharing) { item in
+            CommunityShareSheet(item: item)
         }
     }
 
@@ -172,6 +176,7 @@ struct PresetsPanel: View {
                         }
                     },
                     onEdit: { editing = preset; prefillGoal = ""; showingSheet = true },
+                    onShare: { sharing = CommunityShareItem(preset: preset) },
                     onDuplicate: { store.duplicate(preset) },
                     onDelete: { store.delete(preset) }
                 )
@@ -298,6 +303,7 @@ private struct PresetRow: View {
     let canRun: Bool
     let onRun: () -> Void
     let onEdit: () -> Void
+    let onShare: () -> Void
     let onDuplicate: () -> Void
     let onDelete: () -> Void
 
@@ -326,6 +332,7 @@ private struct PresetRow: View {
         .contextMenu {
             Button("Run", action: onRun).disabled(!canRun)
             Button("Edit", action: onEdit)
+            Button("Share to Community…", action: onShare)
             Button("Duplicate", action: onDuplicate)
             Divider()
             Button("Delete", role: .destructive, action: onDelete)

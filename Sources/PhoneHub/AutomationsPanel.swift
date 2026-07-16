@@ -14,6 +14,7 @@ struct AutomationsPanel: View {
 
     @State private var editing: Automation?
     @State private var showingSheet = false
+    @State private var sharing: CommunityShareItem?
 
     private var visible: [Automation] {
         guard let focused else { return store.automations }
@@ -71,6 +72,7 @@ struct AutomationsPanel: View {
                         run: { run(automation) },
                         stop: { runner.stop() },
                         edit: { editing = automation; showingSheet = true },
+                        share: { sharing = CommunityShareItem(automation: automation) },
                         recalibrate: { recalibrate(automation) },
                         duplicate: { store.duplicate(automation) },
                         delete: { store.delete(automation) }
@@ -88,6 +90,9 @@ struct AutomationsPanel: View {
                     else { store.add(result) }
                 }
             }
+        }
+        .sheet(item: $sharing) { item in
+            CommunityShareSheet(item: item)
         }
     }
 
@@ -151,6 +156,7 @@ private struct AutomationRow: View {
     let run: () -> Void
     let stop: () -> Void
     let edit: () -> Void
+    let share: () -> Void
     let recalibrate: () -> Void
     let duplicate: () -> Void
     let delete: () -> Void
@@ -186,6 +192,7 @@ private struct AutomationRow: View {
         .contextMenu {
             Button("Run", action: run).disabled(!canRun)
             Button("Edit", action: edit)
+            Button("Share to Community…", action: share)
             Button("Duplicate", action: duplicate)
             if isPaused { Button("Re-calibrate", action: recalibrate) }
             Divider()
