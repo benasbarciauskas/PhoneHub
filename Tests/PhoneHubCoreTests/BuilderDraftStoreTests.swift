@@ -69,4 +69,57 @@ final class BuilderDraftStoreTests: XCTestCase {
         XCTAssertEqual(automation.steps, [step])
         XCTAssertEqual(automation.textSourceBindings[step.id]?.sourceID, sourceID)
     }
+
+    func testTimelineValidationAcceptsBoundEmptyFallbackAndValidActions() throws {
+        let source = TextSource(name: "Captions", items: ["Hello"], mode: .static)
+        let text = AutomationStep.typeText(id: UUID(), text: "")
+        let draft = BuilderDraft(
+            platform: .ios,
+            steps: [text, .wait(id: UUID(), ms: 0), .aiStep(id: UUID(), prompt: "Dismiss popup")],
+            textSourceBindings: [text.id: TextSourceRef(sourceID: source.id)]
+        )
+
+        XCTAssertNoThrow(try validateBuilderTimeline(draft, sources: [source]))
+    }
+
+    func testTimelineValidationRejectsEmptyAndInvalidEditableSteps() {
+        XCTAssertThrowsError(try validateBuilderTimeline(BuilderDraft(), sources: [])) { error in
+            XCTAssertEqual(error as? BuilderTimelineValidationError, .emptyTimeline)
+        }
+        let textID = UUID()
+        XCTAssertThrowsError(try validateBuilderTimeline(
+            BuilderDraft(platform: .ios, steps: [.typeText(id: textID, text: " \n")]),
+            sources: []
+        )) { error in
+            XCTAssertEqual(error as? BuilderTimelineValidationError, .emptyTypeText(textID))
+        }
+        let aiID = UUID()
+        XCTAssertThrowsError(try validateBuilderTimeline(
+            BuilderDraft(platform: .ios, steps: [.aiStep(id: aiID, prompt: "")]),
+            sources: []
+        )) { error in
+            XCTAssertEqual(error as? BuilderTimelineValidationError, .emptyAIAction(aiID))
+        }
+        let waitID = UUID()
+        XCTAssertThrowsError(try validateBuilderTimeline(
+            BuilderDraft(platform: .ios, steps: [.wait(id: waitID, ms: -1)]),
+            sources: []
+        )) { error in
+            XCTAssertEqual(error as? BuilderTimelineValidationError, .invalidPause(waitID))
+        }
+    }
+
+    func testTimelineValidationSurfacesMissingBoundSource() {
+        let text = AutomationStep.typeText(id: UUID(), text: "fallback")
+        let draft = BuilderDraft(
+            platform: .android,
+            steps: [text],
+            textSourceBindings: [text.id: TextSourceRef(sourceID: UUID())]
+        )
+        XCTAssertThrowsError(try validateBuilderTimeline(draft, sources: [])) { error in
+            guard case TextSourceResolutionError.missingSource = error else {
+                return XCTFail("Expected missing source, got \(error)")
+            }
+        }
+    }
 }

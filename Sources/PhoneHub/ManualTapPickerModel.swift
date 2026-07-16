@@ -37,6 +37,9 @@ final class ManualTapPickerModel {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
+        image = nil
+        imagePixelSize = .zero
+        deviceSpaceSize = .zero
         defer { isLoading = false }
 
         do {
@@ -93,7 +96,7 @@ final class ManualTapPickerModel {
             deviceSpaceSize = deviceSpace
         } catch {
             errorMessage = error.localizedDescription
-            if image == nil { stop() }
+            stop()
         }
     }
 

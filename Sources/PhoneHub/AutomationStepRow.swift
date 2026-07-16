@@ -15,8 +15,8 @@ struct AutomationStepRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
             HStack {
-                Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 18)
-                Text("\(index + 1). \(title)")
+                Image(systemName: automationStepIcon(step)).foregroundStyle(Theme.accent).frame(width: 18)
+                Text("\(index + 1). \(automationStepTitle(step))")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
                 Spacer()
                 Button(action: moveUp) { Image(systemName: "chevron.up") }.disabled(!canMoveUp)
@@ -119,25 +119,6 @@ struct AutomationStepRow: View {
         return value.rounded() == value ? String(Int(value)) : String(value)
     }
 
-    private var title: String {
-        switch step {
-        case .launchApp: return "Launch app"; case .tap: return "Tap"; case .doubleTap: return "Double tap"
-        case .longPress: return "Long press"; case .typeText: return "Type text"; case .pressKey: return "Press key"
-        case .swipe: return "Swipe"; case .pressHome: return "Press Home"; case .pressBack: return "Press Back"
-        case .pressAppSwitcher: return "App Switcher"; case .scrollTo: return "Scroll to"; case .openURL: return "Open URL"
-        case .wait: return "Wait"; case .aiStep: return "AI step"; case .switchDevice: return "Switch device"
-        }
-    }
-
-    private var icon: String {
-        switch step {
-        case .launchApp: return "app"; case .tap, .doubleTap, .longPress: return "hand.tap"
-        case .typeText: return "keyboard"; case .pressKey: return "command"; case .swipe: return "arrow.up.and.down"
-        case .pressHome: return "house"; case .pressBack: return "chevron.backward"; case .pressAppSwitcher: return "rectangle.3.group"
-        case .scrollTo: return "text.magnifyingglass"; case .openURL: return "link"; case .wait: return "clock"
-        case .aiStep: return "sparkles"; case .switchDevice: return "arrow.triangle.2.circlepath.iphone"
-        }
-    }
 }
 
 private extension String {
