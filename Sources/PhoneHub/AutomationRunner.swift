@@ -117,7 +117,7 @@ final class AutomationRunner {
             // after every iteration succeeds, so failed and cancelled runs consume nothing.
             let textResolution = try textSourceStore.resolve(automation)
             automation.steps = textResolution.steps
-            let initial = makeClient(for: currentDevice.platform)
+            let initial = makePhoneMcpClient(for: currentDevice.platform)
             client = initial
             try await initial.start()
             let steps = stepsToRun(automation: automation)
@@ -157,7 +157,7 @@ final class AutomationRunner {
                     }
 
                     if let label = probeLabel(for: step), !automation.sharedCoordinates {
-                        let arguments = describeArguments(for: currentDevice)
+                        let arguments = directMcpArguments(for: currentDevice)
                         let screen = try await connection.callTool("describe_screen",
                                                                    arguments: arguments,
                                                                    timeoutSeconds: 20)
@@ -207,7 +207,7 @@ final class AutomationRunner {
 
     private func switchTo(_ device: Device) async throws {
         stopClient()
-        let next = makeClient(for: device.platform)
+        let next = makePhoneMcpClient(for: device.platform)
         client = next
         try await next.start()
     }
@@ -244,25 +244,6 @@ final class AutomationRunner {
         case .stopped: throw CancellationError()
         default: throw RunnerError.ai("AI step did not finish.")
         }
-    }
-
-    private func makeClient(for platform: Platform) -> McpDirectClient {
-        let packageArguments: [String]
-        switch platform {
-        case .ios:
-            prepareMirroirConfigForSpawn(serverName: "mirroir")
-            packageArguments = ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
-        case .android:
-            packageArguments = ["-y", "androir-mcp"]
-        }
-        if let npx = resolveTool("npx") {
-            return McpDirectClient(command: npx, arguments: packageArguments)
-        }
-        return McpDirectClient(command: "/usr/bin/env", arguments: ["npx"] + packageArguments)
-    }
-
-    private func describeArguments(for device: Device) -> [String: Any] {
-        device.platform == .android ? ["serial": device.id] : [:]
     }
 
     private func sharedBinding(for step: AutomationStep, in automation: Automation) -> Automation.Binding? {
