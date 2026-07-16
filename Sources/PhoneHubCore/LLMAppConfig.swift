@@ -12,7 +12,8 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
         models: defaultModels,
         vision: false,
         screenDescriberMode: .auto,
-        preferKnownSteps: false
+        preferKnownSteps: false,
+        screenCapturePolicy: .duringRunsOnly
     )
 
     public var selectedBackend: AgentBackend
@@ -24,16 +25,20 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     public var screenDescriberMode: ScreenDescriberMode
     /// App default for reusing compiled/recorded skills (preset may override).
     public var preferKnownSteps: Bool
+    /// Controls whether phone-control MCP clients may capture images or video.
+    public var screenCapturePolicy: ScreenCapturePolicy
 
     public init(selectedBackend: AgentBackend, models: [String: String],
                 vision: Bool = false,
                 screenDescriberMode: ScreenDescriberMode = .auto,
-                preferKnownSteps: Bool = false) {
+                preferKnownSteps: Bool = false,
+                screenCapturePolicy: ScreenCapturePolicy = .duringRunsOnly) {
         self.selectedBackend = selectedBackend
         self.models = models
         self.vision = vision
         self.screenDescriberMode = screenDescriberMode
         self.preferKnownSteps = preferKnownSteps
+        self.screenCapturePolicy = screenCapturePolicy
     }
 
     public func model(forProvider provider: String) -> String {
@@ -46,7 +51,8 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case selectedBackend, models, vision, screenDescriberMode, preferKnownSteps
+        case selectedBackend, models, vision, screenDescriberMode, preferKnownSteps,
+             screenCapturePolicy
     }
 
     public init(from decoder: Decoder) throws {
@@ -58,6 +64,9 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
             ScreenDescriberMode.self, forKey: .screenDescriberMode
         ) ?? .auto
         preferKnownSteps = try container.decodeIfPresent(Bool.self, forKey: .preferKnownSteps) ?? false
+        screenCapturePolicy = try container.decodeIfPresent(
+            ScreenCapturePolicy.self, forKey: .screenCapturePolicy
+        ) ?? .duringRunsOnly
     }
 }
 
