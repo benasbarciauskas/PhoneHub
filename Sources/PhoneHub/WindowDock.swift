@@ -328,7 +328,7 @@ func readAXSize(_ window: AXUIElement) -> CGSize? {
     return size
 }
 
-private func readAXPosition(_ window: AXUIElement) -> CGPoint? {
+func readAXPosition(_ window: AXUIElement) -> CGPoint? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &value) == .success,
           let value,
@@ -342,6 +342,37 @@ private func readAXPosition(_ window: AXUIElement) -> CGPoint? {
         return nil
     }
     return position
+}
+
+func readAXFrame(_ window: AXUIElement) -> CGRect? {
+    guard let position = readAXPosition(window), let size = readAXSize(window) else { return nil }
+    return CGRect(origin: position, size: size)
+}
+
+func isSameAXElement(_ lhs: AXUIElement, _ rhs: AXUIElement) -> Bool {
+    CFEqual(lhs, rhs)
+}
+
+func axWindowUnderPoint(_ point: CGPoint) -> AXUIElement? {
+    let systemWide = AXUIElementCreateSystemWide()
+    var element: AXUIElement?
+    guard AXUIElementCopyElementAtPosition(
+        systemWide, Float(point.x), Float(point.y), &element
+    ) == .success, let element else { return nil }
+    if copyAXAttribute(element, kAXRoleAttribute as CFString) as? String == kAXWindowRole {
+        return element
+    }
+    guard let value = copyAXAttribute(element, kAXWindowAttribute as CFString),
+          CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    return (value as! AXUIElement)
+}
+
+func isAXWindowFocused(_ window: AXUIElement, processIdentifier: pid_t) -> Bool {
+    let appElement = AXUIElementCreateApplication(processIdentifier)
+    AXUIElementSetMessagingTimeout(appElement, 0.1)
+    guard let value = copyAXAttribute(appElement, kAXFocusedWindowAttribute as CFString),
+          CFGetTypeID(value) == AXUIElementGetTypeID() else { return false }
+    return isSameAXElement(window, value as! AXUIElement)
 }
 
 func readAXTitle(_ window: AXUIElement) -> String? {

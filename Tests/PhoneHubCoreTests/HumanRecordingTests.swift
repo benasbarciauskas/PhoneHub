@@ -188,6 +188,34 @@ final class HumanRecordingTests: XCTestCase {
         XCTAssertNil(parseAndroidWindowManagerSize("permission denied"))
     }
 
+    func testClassifiesKeyboardTextWithoutRecordingShortcutsOrControls() {
+        XCTAssertEqual(
+            humanRecordedKeyEvent(time: 1, keyCode: 36, text: "\r",
+                                  hasCommandOrControl: false),
+            .returnKey(time: 1)
+        )
+        XCTAssertEqual(
+            humanRecordedKeyEvent(time: 1, keyCode: 51, text: "",
+                                  hasCommandOrControl: false),
+            .deleteKey(time: 1)
+        )
+        XCTAssertEqual(
+            humanRecordedKeyEvent(time: 1, keyCode: 0, text: "a",
+                                  hasCommandOrControl: false),
+            .printableKey(time: 1, text: "a")
+        )
+        XCTAssertEqual(
+            humanRecordedKeyEvent(time: 1, keyCode: 0, text: "a",
+                                  hasCommandOrControl: true),
+            .nonPrintableKey(time: 1)
+        )
+        XCTAssertEqual(
+            humanRecordedKeyEvent(time: 1, keyCode: 53, text: "\u{1b}",
+                                  hasCommandOrControl: false),
+            .nonPrintableKey(time: 1)
+        )
+    }
+
     private func point(_ x: CGFloat, _ y: CGFloat) -> HumanRecordingPoint {
         HumanRecordingPoint(
             windowPoint: CGPoint(x: x, y: y),

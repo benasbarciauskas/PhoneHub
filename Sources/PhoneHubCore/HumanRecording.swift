@@ -23,6 +23,21 @@ public enum HumanRecordedEvent: Equatable, Sendable {
     case idle(time: TimeInterval)
 }
 
+public func humanRecordedKeyEvent(
+    time: TimeInterval,
+    keyCode: Int64,
+    text: String,
+    hasCommandOrControl: Bool
+) -> HumanRecordedEvent {
+    if keyCode == 36 || keyCode == 76 { return .returnKey(time: time) }
+    if keyCode == 51 || keyCode == 117 { return .deleteKey(time: time) }
+    guard !hasCommandOrControl, !text.isEmpty,
+          text.unicodeScalars.allSatisfy({
+              !CharacterSet.controlCharacters.contains($0)
+          }) else { return .nonPrintableKey(time: time) }
+    return .printableKey(time: time, text: text)
+}
+
 public struct HumanRecordingTranslator: Sendable {
     private struct MouseDown: Sendable {
         let time: TimeInterval
