@@ -141,7 +141,8 @@ struct Sidebar: View {
                     AutomationsPanel(store: automationStore, runner: automationRunner,
                                      agentEngine: engine, chatBusy: chatEngine.isBusy,
                                      focused: store.focusedDevice, backend: agentBackend,
-                                     preferKnownSteps: llmSettings.preferKnownSteps)
+                                     preferKnownSteps: llmSettings.preferKnownSteps,
+                                     deviceRefs: store.connectedDeviceRefs)
                 }
             case .chat:
                 ChatPanel(engine: chatEngine, presetEngine: engine,

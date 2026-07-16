@@ -9,6 +9,8 @@ struct AutomationStepRow: View {
     let moveUp: () -> Void
     let moveDown: () -> Void
     let delete: () -> Void
+    /// Connected device model/label refs for the switchDevice picker.
+    var deviceRefs: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -64,6 +66,26 @@ struct AutomationStepRow: View {
             field("Milliseconds", String(ms)) { step = .wait(id: id, ms: Int($0) ?? ms) }
         case let .aiStep(id, prompt):
             field("Prompt", prompt) { step = .aiStep(id: id, prompt: $0) }
+        case let .switchDevice(id, deviceRef):
+            deviceRefFields(id: id, deviceRef: deviceRef)
+        }
+    }
+
+    @ViewBuilder
+    private func deviceRefFields(id: UUID, deviceRef: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            if !deviceRefs.isEmpty {
+                Picker("Device", selection: Binding(
+                    get: { deviceRefs.contains(deviceRef) ? deviceRef : "" },
+                    set: { if !$0.isEmpty { step = .switchDevice(id: id, deviceRef: $0) } }
+                )) {
+                    Text("Custom…").tag("")
+                    ForEach(deviceRefs, id: \.self) { Text($0).tag($0) }
+                }
+            }
+            field("Device ref (model or label)", deviceRef) {
+                step = .switchDevice(id: id, deviceRef: $0)
+            }
         }
     }
 
@@ -103,7 +125,7 @@ struct AutomationStepRow: View {
         case .longPress: return "Long press"; case .typeText: return "Type text"; case .pressKey: return "Press key"
         case .swipe: return "Swipe"; case .pressHome: return "Press Home"; case .pressBack: return "Press Back"
         case .pressAppSwitcher: return "App Switcher"; case .scrollTo: return "Scroll to"; case .openURL: return "Open URL"
-        case .wait: return "Wait"; case .aiStep: return "AI step"
+        case .wait: return "Wait"; case .aiStep: return "AI step"; case .switchDevice: return "Switch device"
         }
     }
 
@@ -113,7 +135,7 @@ struct AutomationStepRow: View {
         case .typeText: return "keyboard"; case .pressKey: return "command"; case .swipe: return "arrow.up.and.down"
         case .pressHome: return "house"; case .pressBack: return "chevron.backward"; case .pressAppSwitcher: return "rectangle.3.group"
         case .scrollTo: return "text.magnifyingglass"; case .openURL: return "link"; case .wait: return "clock"
-        case .aiStep: return "sparkles"
+        case .aiStep: return "sparkles"; case .switchDevice: return "arrow.triangle.2.circlepath.iphone"
         }
     }
 }
