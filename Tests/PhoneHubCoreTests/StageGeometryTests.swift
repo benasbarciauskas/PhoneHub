@@ -267,6 +267,48 @@ final class StageGeometryTests: XCTestCase {
                        CGRect(x: 100, y: 200, width: 300, height: 0))
     }
 
+    func testCompanionMirrorOriginPlacesRightTopAlignedWithGap() {
+        let phoneHub = CGRect(x: 100, y: 50, width: 260, height: 720)
+        let mirror = CGSize(width: 316, height: 696)
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+        let origin = companionMirrorOrigin(phoneHubFrame: phoneHub,
+                                           mirrorSize: mirror,
+                                           gap: 8,
+                                           visibleFrame: visible)
+
+        XCTAssertEqual(origin.x, 368, accuracy: 0.0001) // 100 + 260 + 8
+        XCTAssertEqual(origin.y, 50, accuracy: 0.0001)  // top-aligned
+    }
+
+    func testCompanionMirrorOriginFallsBackLeftWhenRightWouldGoOffscreen() {
+        let phoneHub = CGRect(x: 1000, y: 40, width: 260, height: 700)
+        let mirror = CGSize(width: 320, height: 680)
+        let visible = CGRect(x: 0, y: 0, width: 1280, height: 800)
+
+        // Right edge would be 1000 + 260 + 8 + 320 = 1588 > 1280
+        let origin = companionMirrorOrigin(phoneHubFrame: phoneHub,
+                                           mirrorSize: mirror,
+                                           gap: 8,
+                                           visibleFrame: visible)
+
+        XCTAssertEqual(origin.x, 1000 - 8 - 320, accuracy: 0.0001) // left of PhoneHub
+        XCTAssertEqual(origin.y, 40, accuracy: 0.0001)
+    }
+
+    func testCompanionMirrorOriginClampsNegativeGapAndZeroMirrorWidth() {
+        let phoneHub = CGRect(x: 200, y: 10, width: 260, height: 500)
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+
+        let origin = companionMirrorOrigin(phoneHubFrame: phoneHub,
+                                           mirrorSize: CGSize(width: 0, height: 100),
+                                           gap: -4,
+                                           visibleFrame: visible)
+
+        XCTAssertEqual(origin.x, 460, accuracy: 0.0001) // maxX + 0 gap
+        XCTAssertEqual(origin.y, 10, accuracy: 0.0001)
+    }
+
     private func assertGridTileRects(count: Int,
                                      file: StaticString = #filePath,
                                      line: UInt = #line) {

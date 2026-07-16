@@ -226,3 +226,22 @@ public func tileContentRect(in tile: CGRect, footerHeight: CGFloat) -> CGRect {
                   width: max(0, tile.width),
                   height: max(0, tile.height) - reservedHeight)
 }
+
+/// Companion layout: place the mirror at its native size beside PhoneHub.
+/// Prefer the right edge, top-aligned, with `gap` between windows. If the
+/// mirror would extend past `visibleFrame` on the right, fall back to the left.
+/// Callers must use a consistent coordinate space (typically AX top-left).
+public func companionMirrorOrigin(phoneHubFrame: CGRect,
+                                  mirrorSize: CGSize,
+                                  gap: CGFloat,
+                                  visibleFrame: CGRect) -> CGPoint {
+    let clampedGap = max(0, gap)
+    let width = max(0, mirrorSize.width)
+    let rightOrigin = CGPoint(x: phoneHubFrame.maxX + clampedGap,
+                              y: phoneHubFrame.minY)
+    if rightOrigin.x + width <= visibleFrame.maxX {
+        return rightOrigin
+    }
+    return CGPoint(x: phoneHubFrame.minX - clampedGap - width,
+                   y: phoneHubFrame.minY)
+}

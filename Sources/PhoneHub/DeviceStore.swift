@@ -5,6 +5,7 @@ import PhoneHubCore
 enum StageLayout: String, CaseIterable, Identifiable {
     case focus
     case wall
+    case companion
 
     var id: String { rawValue }
 
@@ -12,8 +13,14 @@ enum StageLayout: String, CaseIterable, Identifiable {
         switch self {
         case .focus: return "Focus"
         case .wall: return "Wall"
+        case .companion: return "Companion"
         }
     }
+
+    /// PhoneHub window width when the stage pane is collapsed (sidebar only).
+    static let companionSidebarWidth: CGFloat = 260
+    /// Gap between PhoneHub's right edge and the native mirror window.
+    static let companionGap: CGFloat = 8
 }
 
 @Observable
