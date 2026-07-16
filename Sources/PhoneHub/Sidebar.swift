@@ -115,11 +115,13 @@ struct Sidebar: View {
 
             Divider().overlay(Theme.border).padding(.horizontal, Theme.s3)
 
+            // Short labels so five segments fit the 240pt sidebar without overflow.
             Picker("Panel", selection: $lowerPanel) {
                 Text("Presets").tag(LowerPanel.presets)
                 Text("Autos").tag(LowerPanel.automations)
                 Text("Chat").tag(LowerPanel.chat)
-                Text("History").tag(LowerPanel.history)
+                Text("Hist").tag(LowerPanel.history)
+                Text("Notifs").tag(LowerPanel.notifications)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -154,6 +156,10 @@ struct Sidebar: View {
                         automationStore: automationStore,
                         devices: store.devices
                     )
+                }
+            case .notifications:
+                ScrollView {
+                    NotificationsPanel(focused: store.focusedDevice)
                 }
             }
         }
@@ -304,6 +310,7 @@ private enum LowerPanel: Hashable {
     case automations
     case chat
     case history
+    case notifications
 }
 
 private struct DeviceRow: View {
