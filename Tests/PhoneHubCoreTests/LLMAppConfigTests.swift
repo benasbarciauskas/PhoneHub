@@ -7,6 +7,7 @@ final class LLMAppConfigTests: XCTestCase {
 
         XCTAssertEqual(config.selectedBackend, .claude)
         XCTAssertFalse(config.vision)
+        XCTAssertEqual(config.screenDescriberMode, .auto)
         XCTAssertEqual(config.model(forProvider: "openrouter"), "anthropic/claude-3.5-sonnet")
         XCTAssertEqual(config.model(forProvider: "openai"), "gpt-4.1")
         XCTAssertEqual(config.model(forProvider: "anthropic"), "claude-sonnet-4-20250514")
@@ -17,6 +18,7 @@ final class LLMAppConfigTests: XCTestCase {
         config.selectedBackend = .codex
         config.setModel("custom/model", forProvider: "openrouter")
         config.vision = true
+        config.screenDescriberMode = .vision
 
         let data = try JSONEncoder().encode(config)
         let json = String(decoding: data, as: UTF8.self).lowercased()
@@ -30,6 +32,15 @@ final class LLMAppConfigTests: XCTestCase {
         let config = try JSONDecoder().decode(LLMAppConfig.self, from: legacy)
         XCTAssertEqual(config.selectedBackend, .openai)
         XCTAssertFalse(config.vision)
+        XCTAssertEqual(config.screenDescriberMode, .auto)
+    }
+
+    func testScreenDescriberModeRoundTrip() throws {
+        var config = LLMAppConfig.default
+        config.screenDescriberMode = .ocr
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(LLMAppConfig.self, from: data)
+        XCTAssertEqual(decoded.screenDescriberMode, .ocr)
     }
 
     func testStoreMigratesLegacyBackendOnlyWhenNewConfigIsAbsent() throws {
