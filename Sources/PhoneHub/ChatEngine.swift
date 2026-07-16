@@ -19,6 +19,7 @@ final class ChatEngine {
     private let backendAvailability: (AgentBackend) -> BackendStatus
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
+    private let commandGate: (Device?) -> String?
     private var process: StreamingProcess?
     private var apiTask: Task<Void, Never>?
     private var configURL: URL?
@@ -38,11 +39,16 @@ final class ChatEngine {
          },
          screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
              LLMConfigStore().load().screenCapturePolicy
+         },
+         commandGate: @escaping (Device?) -> String? = { device in
+             llmCommandBlockReason(device: device,
+                                   iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
          }) {
         self.store = store
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
         self.screenCapturePolicyProvider = screenCapturePolicyProvider
+        self.commandGate = commandGate
     }
 
     var isBusy: Bool {
@@ -72,6 +78,10 @@ final class ChatEngine {
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
+        if let reason = commandGate(device) {
+            append(.system, reason)
+            return false
+        }
 
         let previousBackend = chat.backend
         chat.sessionId = ChatTurn.sessionId(

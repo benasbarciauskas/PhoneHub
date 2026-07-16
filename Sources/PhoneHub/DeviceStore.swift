@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import PhoneHubCore
@@ -41,6 +42,10 @@ final class DeviceStore {
     private var removedDeviceIDs: Set<String> = []
     private var customNames: [String: String] = [:]
     private let namesFileURL: URL
+    /// Injectable for tests; live check = an iPhone Mirroring screen window exists.
+    var mirrorPresenceProvider: () -> Bool = { MirrorPresence.iosMirrorWindowVisible() }
+    private var autoRefreshTimer: Timer?
+    private var workspaceObservers: [NSObjectProtocol] = []
 
     init(directory: URL? = nil) {
         let directory = directory ?? PresetStore.defaultDirectory()
@@ -142,7 +147,42 @@ final class DeviceStore {
     }
 
     private func isReallyPresent(_ device: Device) -> Bool {
-        device.platform == .android || device.status == "connected"
+        if device.platform == .android || device.status == "connected" { return true }
+        // devicectl reports a mirroring-only iPhone as notConnected (no USB/tunnel),
+        // so a live mirror window also counts as present. macOS mirrors one phone
+        // at a time; if several removed iPhones are paired this re-surfaces all of
+        // them, which is the safe direction — Remove hides again in one click.
+        return mirrorPresenceProvider()
+    }
+
+    /// Refresh discovery when iPhone Mirroring launches/activates and on a slow
+    /// timer, so a reconnected phone reappears without pressing Refresh.
+    func startAutoRefresh() {
+        guard workspaceObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification,
+                     NSWorkspace.didActivateApplicationNotification] {
+            workspaceObservers.append(center.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication,
+                      app.bundleIdentifier == "com.apple.ScreenContinuity" else { return }
+                Task { @MainActor in self?.refresh() }
+            })
+        }
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
+    func stopAutoRefresh() {
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        workspaceObservers = []
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = nil
     }
 
     private func saveCustomNames() {

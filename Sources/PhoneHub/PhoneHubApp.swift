@@ -116,6 +116,7 @@ struct PhoneHubApp: App {
             .preferredColorScheme(.dark)
             .onAppear {
                 store.refresh()
+                store.startAutoRefresh()
                 schedulerRunner.start()
                 triggerRunner.start()
             }
