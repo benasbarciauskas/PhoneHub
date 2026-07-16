@@ -134,14 +134,16 @@ final class AutomationEngine {
         guard !isBusy else { return }
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let preset = Preset(name: "Command", goal: trimmed, platforms: [device.platform])
+        // History shows the actual command, not a generic "Command" title.
+        let title = trimmed.count > 60 ? String(trimmed.prefix(60)) + "…" : trimmed
+        let preset = Preset(name: title, goal: trimmed, platforms: [device.platform])
         beginHistory(name: preset.name, device: device)
         do {
             let plan = try buildAutomationPlan(
                 preset: preset, device: device, backend: backend,
                 preferKnownSteps: preferKnownSteps)
             launch(plan: plan, preset: preset, device: device,
-                   header: "Running command on \(device.model)…")
+                   header: "Running “\(title)” on \(device.model)…")
         } catch {
             fail("Could not prepare the run: \(error)")
         }
