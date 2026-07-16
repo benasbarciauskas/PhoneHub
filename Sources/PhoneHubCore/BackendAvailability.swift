@@ -8,8 +8,16 @@ public enum BackendStatus: Equatable, Sendable {
 public enum BackendAvailability {
     public static func check(
         _ backend: AgentBackend,
-        resolver: (String) -> String? = defaultResolver
+        resolver: (String) -> String? = defaultResolver,
+        keyLookup: (String) -> String? = defaultKeyLookup
     ) -> BackendStatus {
+        if backend.isAPI {
+            let key = keyLookup(backend.rawValue)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return key.isEmpty
+                ? .missing(hint: "Add your \(backend.displayName) API key in Settings.")
+                : .available(path: "api")
+        }
         let binary = backend.rawValue
         if let path = resolver(binary) {
             return .available(path: path)
@@ -19,7 +27,13 @@ public enum BackendAvailability {
             return .missing(hint: "Install the Claude CLI (https://claude.com/claude-code) and run `claude` once to log in. PhoneHub uses your own login — it stores no keys.")
         case .codex:
             return .missing(hint: "Install the Codex CLI (npm i -g @openai/codex) and run `codex` once to log in. PhoneHub uses your own login — it stores no keys.")
+        case .openrouter, .openai, .anthropic:
+            preconditionFailure("API backends are handled before CLI resolution")
         }
+    }
+
+    public static func defaultKeyLookup(_ provider: String) -> String? {
+        try? KeychainStore().key(provider: provider)
     }
 
     public static func defaultResolver(_ binary: String) -> String? {

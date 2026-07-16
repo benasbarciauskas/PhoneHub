@@ -10,13 +10,13 @@ struct PhoneHubApp: App {
     @State private var engine: AutomationEngine
     @State private var chatEngine: ChatEngine
     @State private var automationRunner: AutomationRunner
+    @State private var llmSettings: LLMSettingsModel
     @State private var mirrorRaiseTask: Task<Void, Never>?
-    @AppStorage("agentBackend") private var agentBackendRawValue = AgentBackend.claude.rawValue
 
     private var agentBackendBinding: Binding<AgentBackend> {
         Binding(
-            get: { AgentBackend(rawValue: agentBackendRawValue) ?? .claude },
-            set: { agentBackendRawValue = $0.rawValue }
+            get: { llmSettings.selectedBackend },
+            set: { llmSettings.selectBackend($0) }
         )
     }
 
@@ -31,6 +31,7 @@ struct PhoneHubApp: App {
         _automationStore = State(initialValue: automations)
         _engine = State(initialValue: presetEngine)
         _chatEngine = State(initialValue: chat)
+        _llmSettings = State(initialValue: LLMSettingsModel())
         _automationRunner = State(initialValue: AutomationRunner(store: automations,
                                                                  agentEngine: presetEngine))
     }
@@ -40,7 +41,7 @@ struct PhoneHubApp: App {
             HStack(spacing: 0) {
                 Sidebar(store: store, presetStore: presetStore, automationStore: automationStore,
                         engine: engine, chatEngine: chatEngine, automationRunner: automationRunner,
-                        agentBackend: agentBackendBinding)
+                        agentBackend: agentBackendBinding, llmSettings: llmSettings)
                 Divider().overlay(Theme.border)
                 Stage(store: store, automationStore: automationStore,
                       automationRunner: automationRunner, presetEngine: engine,

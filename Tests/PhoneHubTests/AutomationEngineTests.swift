@@ -20,4 +20,70 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertTrue(AutomationEngine.lostSessionMessage.contains("Lost session"))
         XCTAssertTrue(AutomationEngine.lostSessionMessage.lowercased().contains("start the goal again"))
     }
+
+    func testAPIRunUsesRuntimeEventsAndFinishesWithoutCLI() async throws {
+        let provider = AppSequenceProvider([
+            LLMResponse(text: "Goal complete.", toolCalls: [])
+        ])
+        let client = AppRecordingMCPClient()
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, _ in ApiAgentRuntime(provider: provider, client: client) }
+        )
+        let preset = Preset(name: "API run", goal: "Open Settings", platforms: [.ios])
+        let device = Device(id: "ios", platform: .ios, model: "iPhone",
+                            osVersion: "18", status: "connected")
+
+        engine.run(preset: preset, on: device, backend: .openai)
+        try await waitUntil { engine.state == .finished }
+
+        XCTAssertEqual(engine.log, ["Running “API run” on iPhone…", "Goal complete.", "Done."])
+        XCTAssertTrue(client.started)
+        XCTAssertTrue(client.stopped)
+    }
+
+    func testCondenseUsesTextOnlyAPICompletion() async throws {
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "keychain") },
+            apiRuntimeFactory: { _, _ in throw LLMProviderFactoryError.unsupportedBackend },
+            apiTextCompletion: { backend, prompt in
+                XCTAssertEqual(backend, .openrouter)
+                XCTAssertTrue(prompt.contains("Output ONLY the JSON array"))
+                return "[]"
+            }
+        )
+
+        let result = try await engine.condense(goal: "Open Settings", rawSteps: [],
+                                               backend: .openrouter)
+
+        XCTAssertEqual(result, [])
+        XCTAssertFalse(engine.isCondensing)
+    }
+
+    private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
+        for _ in 0..<100 where !predicate() {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(predicate())
+    }
+}
+
+actor AppSequenceProvider: LLMProvider {
+    private var responses: [LLMResponse]
+    init(_ responses: [LLMResponse]) { self.responses = responses }
+    func send(messages: [LLMMessage], tools: [LLMToolDefinition]) async throws -> LLMResponse {
+        guard !responses.isEmpty else { throw LLMProviderError.invalidResponse }
+        return responses.removeFirst()
+    }
+}
+
+final class AppRecordingMCPClient: McpToolClient, @unchecked Sendable {
+    private(set) var started = false
+    private(set) var stopped = false
+    func start() async throws { started = true }
+    func callTool(_ name: String, arguments: [String: Any],
+                  timeoutSeconds: Double) async throws -> McpToolResult {
+        McpToolResult(text: "ok", isError: false)
+    }
+    func stop() { stopped = true }
 }
