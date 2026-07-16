@@ -95,6 +95,26 @@ final class LLMSettingsModelTests: XCTestCase {
         XCTAssertEqual(store.load().screenDescriberMode, .vision)
     }
 
+    func testPreferKnownStepsTogglePersistsInConfig() throws {
+        let suite = "LLMSettingsModelTests.preferKnown.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LLMConfigStore(defaults: defaults)
+        let model = LLMSettingsModel(
+            configStore: store,
+            keyLookup: { _ in nil },
+            keySetter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+
+        XCTAssertFalse(model.preferKnownSteps)
+        model.setPreferKnownSteps(true)
+        XCTAssertTrue(model.preferKnownSteps)
+        XCTAssertTrue(store.load().preferKnownSteps)
+        model.setPreferKnownSteps(false)
+        XCTAssertFalse(store.load().preferKnownSteps)
+    }
+
     private func ephemeralDefaults() -> UserDefaults {
         UserDefaults(suiteName: "LLMSettingsModelTests.\(UUID().uuidString)")!
     }

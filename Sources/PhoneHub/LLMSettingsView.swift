@@ -66,6 +66,16 @@ struct LLMSettingsView: View {
 
             Divider()
 
+            Toggle(isOn: preferKnownStepsBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Prefer known steps (reuse recorded skills, less screen-reading)")
+                    Text("Instructs the agent to replay compiled/recorded skills when available.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.subtext)
+                }
+            }
+            .toggleStyle(.switch)
+
             field("iOS screen describer") {
                 Picker("Screen describer", selection: screenDescriberBinding) {
                     ForEach(ScreenDescriberMode.allCases, id: \.self) { mode in
@@ -123,6 +133,13 @@ struct LLMSettingsView: View {
         Binding(
             get: { settings.screenDescriberMode },
             set: { settings.setScreenDescriberMode($0) }
+        )
+    }
+
+    private var preferKnownStepsBinding: Binding<Bool> {
+        Binding(
+            get: { settings.preferKnownSteps },
+            set: { settings.setPreferKnownSteps($0) }
         )
     }
 

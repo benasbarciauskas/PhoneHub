@@ -8,6 +8,7 @@ final class LLMAppConfigTests: XCTestCase {
         XCTAssertEqual(config.selectedBackend, .claude)
         XCTAssertFalse(config.vision)
         XCTAssertEqual(config.screenDescriberMode, .auto)
+        XCTAssertFalse(config.preferKnownSteps)
         XCTAssertEqual(config.model(forProvider: "openrouter"), "anthropic/claude-3.5-sonnet")
         XCTAssertEqual(config.model(forProvider: "openai"), "gpt-4.1")
         XCTAssertEqual(config.model(forProvider: "anthropic"), "claude-sonnet-4-20250514")
@@ -19,6 +20,7 @@ final class LLMAppConfigTests: XCTestCase {
         config.setModel("custom/model", forProvider: "openrouter")
         config.vision = true
         config.screenDescriberMode = .vision
+        config.preferKnownSteps = true
 
         let data = try JSONEncoder().encode(config)
         let json = String(decoding: data, as: UTF8.self).lowercased()
@@ -33,6 +35,15 @@ final class LLMAppConfigTests: XCTestCase {
         XCTAssertEqual(config.selectedBackend, .openai)
         XCTAssertFalse(config.vision)
         XCTAssertEqual(config.screenDescriberMode, .auto)
+        XCTAssertFalse(config.preferKnownSteps)
+    }
+
+    func testLegacyConfigWithoutPreferKnownStepsDecodesAsFalse() throws {
+        let legacy = Data(#"{"selectedBackend":"claude","models":{},"vision":true,"screenDescriberMode":"ocr"}"#.utf8)
+        let config = try JSONDecoder().decode(LLMAppConfig.self, from: legacy)
+        XCTAssertFalse(config.preferKnownSteps)
+        XCTAssertTrue(config.vision)
+        XCTAssertEqual(config.screenDescriberMode, .ocr)
     }
 
     func testScreenDescriberModeRoundTrip() throws {
