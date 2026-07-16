@@ -72,7 +72,14 @@ struct BuilderView: View {
         } message: {
             Text(alertMessage ?? "")
         }
-        .onChange(of: engine.state) { _, state in handleEngineState(state) }
+        .onAppear {
+            recoverBuilderRunIfNeeded()
+            handleEngineState(engine.state)
+        }
+        .onChange(of: engine.state) { _, state in
+            recoverBuilderRunIfNeeded()
+            handleEngineState(state)
+        }
     }
 
     private var inputBox: some View {
@@ -284,6 +291,19 @@ struct BuilderView: View {
             engine.stop()
         case .idle, .running: break
         }
+    }
+
+    /// The panel can be switched away while a builder turn is running. Recover
+    /// its transient status from the engine so the captured action is not lost
+    /// when this view is mounted again.
+    private func recoverBuilderRunIfNeeded() {
+        guard engine.isBuilderAction, activeMessageID == nil,
+              let preset = engine.runningPreset,
+              let platform = preset.platforms.first else { return }
+        let message = BuilderMessage(request: preset.goal, status: .running)
+        messages.append(message)
+        activeMessageID = message.id
+        activePlatform = platform
     }
 
     private func finishMessage(_ id: UUID, with status: BuilderMessageStatus) {
