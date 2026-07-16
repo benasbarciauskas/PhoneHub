@@ -208,19 +208,23 @@ struct Stage: View {
                 }
             }
             do {
+                let mirroredTitle: String?
                 if stageState.menuFittedIOSDeviceIDs.contains(device.id) {
                     try dockWindow(ownerName: "com.apple.ScreenContinuity",
                                    into: stageState.stageRect,
                                    activate: false)
+                    mirroredTitle = findIPhoneMirroringApp().flatMap {
+                        readIPhoneMirroringWindowTitle(processIdentifier: $0.processIdentifier)
+                    }
                 } else {
                     // This initial dock may open the View menu once to fit iPhone Mirroring.
-                    try await mirroringController.dock(into: stageState.stageRect)
+                    mirroredTitle = try await mirroringController.dock(into: stageState.stageRect)
                     stageState.menuFittedIOSDeviceIDs.insert(device.id)
                 }
                 guard !Task.isCancelled, stageState.activeDevice?.id == device.id else { return }
                 stageState.isDocked = true
-                stageState.placeholder = StagePlaceholder(title: "Docking \(device.model)...",
-                                                          detail: "iPhone Mirroring is positioned in the stage rectangle.")
+                stageState.placeholder = iPhoneDockedPlaceholder(clickedModel: device.model,
+                                                                 mirroredTitle: mirroredTitle)
             } catch is CancellationError {
                 return
             } catch {
@@ -439,19 +443,23 @@ struct Stage: View {
                 }
             }
             do {
+                let mirroredTitle: String?
                 if stageState.menuFittedIOSDeviceIDs.contains(device.id) {
                     try dockWindow(ownerName: "com.apple.ScreenContinuity",
                                    into: rect,
                                    activate: false)
+                    mirroredTitle = findIPhoneMirroringApp().flatMap {
+                        readIPhoneMirroringWindowTitle(processIdentifier: $0.processIdentifier)
+                    }
                 } else {
                     // This initial wall dock may open the View menu once to fit iPhone Mirroring.
-                    try await mirroringController.dock(into: rect)
+                    mirroredTitle = try await mirroringController.dock(into: rect)
                     stageState.menuFittedIOSDeviceIDs.insert(device.id)
                 }
                 guard !Task.isCancelled, store.layout == .wall else { return }
                 stageState.wallIOSDeviceID = device.id
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
-                                                                          detail: nil)
+                stageState.wallPlaceholders[device.id] = iPhoneDockedPlaceholder(clickedModel: device.model,
+                                                                                  mirroredTitle: mirroredTitle)
             } catch is CancellationError {
                 return
             } catch {
@@ -466,8 +474,6 @@ struct Stage: View {
 
     private func dockWallIOS(_ device: Device, rect: CGRect) {
         cancelDockingTask()
-        stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
-                                                                  detail: nil)
         let taskID = UUID()
         dockingTaskDeviceID = device.id
         dockingTaskID = taskID
@@ -487,8 +493,6 @@ struct Stage: View {
                                into: rect,
                                activate: false)
                 guard !Task.isCancelled, store.layout == .wall else { return }
-                stageState.wallPlaceholders[device.id] = StagePlaceholder(title: device.model,
-                                                                          detail: nil)
             } catch is CancellationError {
                 return
             } catch {
@@ -575,6 +579,26 @@ func stageNotConnectedIOSPlaceholder(for device: Device) -> StagePlaceholder? {
 
     return StagePlaceholder(title: "\(device.model) — not connected",
                             detail: "Bring it near + unlock (same Apple ID), or it may be mirrored elsewhere. macOS mirrors one iPhone at a time.")
+}
+
+func iPhoneDockedPlaceholder(clickedModel: String, mirroredTitle: String?) -> StagePlaceholder {
+    guard let mirroredTitle else {
+        return StagePlaceholder(
+            title: "iPhone Mirroring is docked",
+            detail: "PhoneHub could not verify which paired iPhone is being shown."
+        )
+    }
+
+    switch compareMirroredDevice(clickedModel: clickedModel, mirroredTitle: mirroredTitle) {
+    case .match:
+        return StagePlaceholder(title: clickedModel,
+                                detail: "iPhone Mirroring is positioned in the stage rectangle.")
+    case .mismatch(let actual):
+        return StagePlaceholder(
+            title: "iPhone Mirroring device mismatch",
+            detail: "iPhone Mirroring is paired to “\(actual)”. To mirror “\(clickedModel)”, switch the paired iPhone in the iPhone Mirroring app (its device menu) or System Settings."
+        )
+    }
 }
 
 @Observable

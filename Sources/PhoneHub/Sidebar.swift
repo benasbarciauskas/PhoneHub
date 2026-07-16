@@ -15,7 +15,11 @@ struct Sidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
             HStack {
-                Text("Devices").font(.headline).foregroundStyle(Theme.text)
+                Text("Devices")
+                    .font(.headline)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Picker("Layout", selection: $store.layout) {
                     ForEach(StageLayout.allCases) { layout in
@@ -116,7 +120,11 @@ private struct DeviceRow: View {
         HStack(spacing: Theme.s2) {
             Circle().fill(statusColor).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(device.model).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
+                Text(device.model)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(device.platform == .android ? "Android \(device.osVersion)" : "iOS \(device.osVersion)")
                     .font(.system(size: 11)).foregroundStyle(Theme.subtext)
                 if device.platform == .ios, device.status == "notConnected" {

@@ -8,6 +8,63 @@ public enum FitStep: Equatable, Sendable {
     case fits
 }
 
+/// Chooses the best discrete View-menu size observed during one fit pass.
+/// If the menu cannot produce a fitting size, the smallest observed size is
+/// returned so the AppKit layer can attempt a final best-effort aspect fit.
+public func selectFinalMirrorMenuSize(from observedSizes: [CGSize], target: CGSize) -> CGSize? {
+    let validSizes = observedSizes.filter { $0.width > 0 && $0.height > 0 }
+    guard !validSizes.isEmpty else { return nil }
+
+    let fittingSizes = validSizes.filter { $0.width <= target.width && $0.height <= target.height }
+    return (fittingSizes.max(by: { area(of: $0) < area(of: $1) })
+        ?? validSizes.min(by: { area(of: $0) < area(of: $1) }))
+}
+
+public func aspectFitSize(_ contentSize: CGSize, within target: CGSize) -> CGSize {
+    guard contentSize.width > 0,
+          contentSize.height > 0,
+          target.width > 0,
+          target.height > 0 else {
+        return .zero
+    }
+
+    let scale = min(1, target.width / contentSize.width, target.height / contentSize.height)
+    return CGSize(width: contentSize.width * scale,
+                  height: contentSize.height * scale)
+}
+
+public struct MirrorAXResizeDecision: Equatable, Sendable {
+    public let finalSize: CGSize
+    public let resizeWasIgnored: Bool
+
+    public init(finalSize: CGSize, resizeWasIgnored: Bool) {
+        self.finalSize = finalSize
+        self.resizeWasIgnored = resizeWasIgnored
+    }
+}
+
+/// Uses the actual AX read-back when available. If AX sizing is ignored or
+/// cannot be verified, the menu-controlled size remains the safe fallback.
+public func finalMirrorSizeAfterBestEffortAXResize(
+    menuSize: CGSize,
+    requestedSize: CGSize,
+    readBackSize: CGSize?
+) -> MirrorAXResizeDecision {
+    guard let readBackSize,
+          readBackSize.width > 0,
+          readBackSize.height > 0 else {
+        return MirrorAXResizeDecision(finalSize: menuSize, resizeWasIgnored: true)
+    }
+
+    let resizeWasIgnored = abs(readBackSize.width - requestedSize.width) > 1
+        || abs(readBackSize.height - requestedSize.height) > 1
+    return MirrorAXResizeDecision(finalSize: readBackSize, resizeWasIgnored: resizeWasIgnored)
+}
+
+private func area(of size: CGSize) -> CGFloat {
+    size.width * size.height
+}
+
 public func fitStep(current: CGSize, target: CGSize) -> FitStep {
     if current.width > target.width || current.height > target.height {
         return .smaller

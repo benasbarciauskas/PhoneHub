@@ -21,7 +21,7 @@ final class MirroringController {
         }
     }
 
-    func dock(into rect: CGRect) async throws {
+    func dock(into rect: CGRect) async throws -> String? {
         activate()
 
         let deadline = Date().addingTimeInterval(6)
@@ -33,7 +33,7 @@ final class MirroringController {
                     throw WindowDockError.appNotFound(bundleID)
                 }
                 try await fitMirrorToRect(pid: app.processIdentifier, rect: rect)
-                return
+                return readIPhoneMirroringWindowTitle(processIdentifier: app.processIdentifier)
             } catch let error as WindowDockError {
                 switch error {
                 case .appNotFound, .windowNotFound:
@@ -52,12 +52,14 @@ final class MirroringController {
                 throw WindowDockError.appNotFound(bundleID)
             }
             try await fitMirrorToRect(pid: app.processIdentifier, rect: rect)
+            return readIPhoneMirroringWindowTitle(processIdentifier: app.processIdentifier)
         } catch {
             throw lastError ?? error
         }
     }
 
     func stop() {
+        clearDockedIPhoneMirroringWindows()
         findIPhoneMirroringApp()?.terminate()
     }
 }

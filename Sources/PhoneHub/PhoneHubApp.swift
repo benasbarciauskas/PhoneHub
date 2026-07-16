@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PhoneHubCore
 
@@ -9,6 +10,7 @@ struct PhoneHubApp: App {
     @State private var engine: AutomationEngine
     @State private var chatEngine: ChatEngine
     @State private var automationRunner: AutomationRunner
+    @State private var mirrorRaiseTask: Task<Void, Never>?
     @AppStorage("agentBackend") private var agentBackendRawValue = AgentBackend.claude.rawValue
 
     private var agentBackendBinding: Binding<AgentBackend> {
@@ -48,8 +50,29 @@ struct PhoneHubApp: App {
             .background(Theme.bg)
             .preferredColorScheme(.dark)
             .onAppear { store.refresh() }
-            .onDisappear { chatEngine.shutdown() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                scheduleDockedMirrorRaise()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                scheduleDockedMirrorRaise()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { _ in
+                scheduleDockedMirrorRaise()
+            }
+            .onDisappear {
+                mirrorRaiseTask?.cancel()
+                chatEngine.shutdown()
+            }
         }
         .windowStyle(.hiddenTitleBar)
+    }
+
+    private func scheduleDockedMirrorRaise() {
+        mirrorRaiseTask?.cancel()
+        mirrorRaiseTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+            raiseDockedIPhoneMirroringWindows()
+        }
     }
 }

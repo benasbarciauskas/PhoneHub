@@ -2,6 +2,9 @@ import AppKit
 import ApplicationServices
 import PhoneHubCore
 
+@MainActor
+private var dockedIPhoneMirroringProcessIDs: Set<pid_t> = []
+
 enum WindowDockError: LocalizedError {
     case accessibilityNotTrusted
     case appNotFound(String)
@@ -78,6 +81,7 @@ func dockWindow(ownerName: String, into rect: CGRect, activate: Bool = true) thr
         throw WindowDockError.setFrameFailed
     }
 
+    trackDockedIPhoneMirroringWindow(processIdentifier: app.processIdentifier)
     return mirrorSize
 }
 
@@ -154,10 +158,17 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
     }
 
-    let targetSize = rect.size
-    let maxIterations = 14
+    let inset: CGFloat = 12
+    let insetX = min(inset, max(0, rect.width / 2))
+    let insetY = min(inset, max(0, rect.height / 2))
+    let targetSize = rect.insetBy(dx: insetX, dy: insetY).size
+    NSLog("PhoneHub fitting iPhone Mirroring into stage rect %@ (content target %@)",
+          NSStringFromRect(rect), NSStringFromSize(targetSize))
+
+    let maxIterations = 64
     var iterationCount = 0
     var seenSizes: Set<String> = [roundedSizeKey(currentSize)]
+    var observedSizes: [CGSize] = [currentSize]
 
     func pressAndRead(_ actionName: String) async throws -> CGSize? {
         guard pressViewMenuItem(pid: pid, named: actionName) else {
@@ -169,7 +180,11 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
     }
 
     func recordSeenSize(_ size: CGSize) -> Bool {
-        seenSizes.insert(roundedSizeKey(size)).inserted
+        let inserted = seenSizes.insert(roundedSizeKey(size)).inserted
+        if inserted {
+            observedSizes.append(size)
+        }
+        return inserted
     }
 
     while exceedsTarget(currentSize, target: targetSize), iterationCount < maxIterations {
@@ -189,6 +204,7 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
             if exceedsTarget(currentSize, target: targetSize),
                let smallerSize = try await pressAndRead("Smaller") {
                 currentSize = smallerSize
+                _ = recordSeenSize(smallerSize)
             }
             break
         }
@@ -228,7 +244,74 @@ func fitMirrorToRect(pid: Int32, rect: CGRect) async throws -> CGSize {
         }
     }
 
-    return try centerAXWindow(window, size: currentSize, in: rect)
+    guard let selectedMenuSize = selectFinalMirrorMenuSize(from: observedSizes, target: targetSize) else {
+        throw WindowDockError.windowSizeUnavailable("com.apple.ScreenContinuity")
+    }
+    let constrainedSize = aspectFitSize(selectedMenuSize, within: targetSize)
+    guard constrainedSize.width > 0, constrainedSize.height > 0 else {
+        throw WindowDockError.setFrameFailed
+    }
+
+    let attemptedAXResize = !sizesAreEffectivelyEqual(currentSize, constrainedSize)
+    let axWriteSucceeded = !attemptedAXResize || setAXSize(window, to: constrainedSize)
+    let readBackSize = readAXSize(window)
+    let decision = finalMirrorSizeAfterBestEffortAXResize(
+        menuSize: currentSize,
+        requestedSize: constrainedSize,
+        readBackSize: readBackSize
+    )
+
+    if attemptedAXResize, !axWriteSucceeded {
+        NSLog("PhoneHub iPhone Mirroring AX resize write failed for requested size %@; continuing with menu size %@",
+              NSStringFromSize(constrainedSize), NSStringFromSize(decision.finalSize))
+    } else if attemptedAXResize, decision.resizeWasIgnored {
+        NSLog("PhoneHub iPhone Mirroring ignored AX resize: wrote %@, read back %@; continuing with View-menu size",
+              NSStringFromSize(constrainedSize),
+              readBackSize.map(NSStringFromSize) ?? "unavailable")
+    }
+
+    let dockedSize = try centerAXWindow(window, size: decision.finalSize, in: rect)
+    trackDockedIPhoneMirroringWindow(processIdentifier: pid)
+    return dockedSize
+}
+
+@MainActor
+func raiseDockedIPhoneMirroringWindows() {
+    guard isAccessibilityTrusted() else { return }
+
+    var staleProcessIDs: Set<pid_t> = []
+    for processIdentifier in dockedIPhoneMirroringProcessIDs {
+        let appElement = AXUIElementCreateApplication(processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.2)
+        guard let window = firstWindow(in: appElement),
+              AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else {
+            staleProcessIDs.insert(processIdentifier)
+            continue
+        }
+    }
+    dockedIPhoneMirroringProcessIDs.subtract(staleProcessIDs)
+}
+
+@MainActor
+func clearDockedIPhoneMirroringWindows() {
+    dockedIPhoneMirroringProcessIDs.removeAll()
+}
+
+@MainActor
+func readIPhoneMirroringWindowTitle(processIdentifier: pid_t) -> String? {
+    let appElement = AXUIElementCreateApplication(processIdentifier)
+    AXUIElementSetMessagingTimeout(appElement, 0.2)
+    guard let window = firstWindow(in: appElement),
+          let title = readAXTitle(window)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !title.isEmpty else {
+        return nil
+    }
+    return title
+}
+
+@MainActor
+private func trackDockedIPhoneMirroringWindow(processIdentifier: pid_t) {
+    dockedIPhoneMirroringProcessIDs.insert(processIdentifier)
 }
 
 private func exceedsTarget(_ size: CGSize, target: CGSize) -> Bool {
