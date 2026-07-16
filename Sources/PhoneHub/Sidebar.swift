@@ -16,6 +16,8 @@ struct Sidebar: View {
     @State private var renameText = ""
     @State private var showingSettings = false
     @State private var showingAddDevice = false
+    @State private var switchMessage: String?
+    @State private var isSwitchingIPhone = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -82,6 +84,14 @@ struct Sidebar: View {
                                   selected: device.id == store.focusedDevice?.id)
                             .onTapGesture { withAnimation(Theme.selection) { store.setFocused(device) } }
                             .contextMenu {
+                                if device.platform == .ios,
+                                   device.id != store.focusedDevice?.id {
+                                    Button("Switch iPhone Mirroring to this device") {
+                                        Task { await switchIPhoneMirroring(to: device) }
+                                    }
+                                    .disabled(isSwitchingIPhone)
+                                    Divider()
+                                }
                                 Button("Rename") {
                                     renameText = store.displayName(for: device)
                                     renamingDevice = device
@@ -152,6 +162,37 @@ struct Sidebar: View {
         }
         .sheet(isPresented: $showingAddDevice) {
             AddDeviceSheet(store: store)
+        }
+        .alert("iPhone Mirroring", isPresented: Binding(
+            get: { switchMessage != nil },
+            set: { if !$0 { switchMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(switchMessage ?? "")
+        }
+    }
+
+    /// Drive System Settings → Desktop & Dock iPhone popup, then re-focus/dock.
+    private func switchIPhoneMirroring(to device: Device) async {
+        guard device.platform == .ios, !isSwitchingIPhone else { return }
+        isSwitchingIPhone = true
+        defer { isSwitchingIPhone = false }
+
+        var names: [String] = []
+        let display = store.displayName(for: device)
+        if !display.isEmpty { names.append(display) }
+        if device.model != display, !device.model.isEmpty { names.append(device.model) }
+
+        let result = await IPhoneSwitcher.switchMirroring(toDeviceNames: names)
+        switch result {
+        case .switched:
+            store.setFocused(device)
+            store.refresh()
+        default:
+            if let message = result.userMessage {
+                switchMessage = message
+            }
         }
     }
 }
