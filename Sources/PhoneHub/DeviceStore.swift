@@ -98,6 +98,24 @@ final class DeviceStore {
         customNames[device.id] ?? device.model
     }
 
+    /// Resolve a switchDevice ref against currently discovered devices (model or custom label).
+    func device(matchingRef ref: String) -> Device? {
+        resolveDeviceRef(ref, devices: devices, labels: customNames)
+    }
+
+    /// Model names + distinct custom labels for the switch-device picker.
+    var connectedDeviceRefs: [String] {
+        var refs: [String] = []
+        var seen = Set<String>()
+        for device in devices {
+            for candidate in [device.model, customNames[device.id]].compactMap({ $0 }) {
+                guard seen.insert(candidate).inserted else { continue }
+                refs.append(candidate)
+            }
+        }
+        return refs
+    }
+
     func applyDiscovery(_ found: [Device]) {
         let presentRemovedIDs = Set(found.lazy
             .filter { self.removedDeviceIDs.contains($0.id) && self.isReallyPresent($0) }

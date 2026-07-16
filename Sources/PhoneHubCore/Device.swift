@@ -22,3 +22,17 @@ public struct Device: Identifiable, Hashable, Sendable {
 
     public var isReady: Bool { status == "device" }
 }
+
+/// Resolve a stored device ref to a connected device.
+/// Prefers case-insensitive match on `model`, then exact match on optional labels (device id → user label).
+public func resolveDeviceRef(_ ref: String, devices: [Device],
+                             labels: [String: String] = [:]) -> Device? {
+    let needle = ref.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !needle.isEmpty else { return nil }
+    if let byModel = devices.first(where: {
+        $0.model.compare(needle, options: .caseInsensitive) == .orderedSame
+    }) {
+        return byModel
+    }
+    return devices.first(where: { labels[$0.id] == needle })
+}

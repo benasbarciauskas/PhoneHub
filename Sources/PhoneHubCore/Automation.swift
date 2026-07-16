@@ -15,6 +15,8 @@ public enum AutomationStep: Codable, Equatable, Identifiable, Sendable {
     case openURL(id: UUID, url: String)
     case wait(id: UUID, ms: Int)
     case aiStep(id: UUID, prompt: String)
+    /// Switch subsequent steps to another connected device (model name or user label).
+    case switchDevice(id: UUID, deviceRef: String)
 
     public var id: UUID {
         switch self {
@@ -22,13 +24,13 @@ public enum AutomationStep: Codable, Equatable, Identifiable, Sendable {
              let .longPress(id, _, _, _, _), let .typeText(id, _), let .pressKey(id, _),
              let .swipe(id, _), let .pressHome(id), let .pressBack(id),
              let .pressAppSwitcher(id), let .scrollTo(id, _, _), let .openURL(id, _),
-             let .wait(id, _), let .aiStep(id, _):
+             let .wait(id, _), let .aiStep(id, _), let .switchDevice(id, _):
             return id
         }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, id, name, label, x, y, durationMs, text, key, direction, url, ms, prompt
+        case type, id, name, label, x, y, durationMs, text, key, direction, url, ms, prompt, deviceRef
     }
 
     public init(from decoder: Decoder) throws {
@@ -50,6 +52,7 @@ public enum AutomationStep: Codable, Equatable, Identifiable, Sendable {
         case "openURL": self = .openURL(id: id, url: try values.decode(String.self, forKey: .url))
         case "wait": self = .wait(id: id, ms: try values.decode(Int.self, forKey: .ms))
         case "aiStep": self = .aiStep(id: id, prompt: try values.decode(String.self, forKey: .prompt))
+        case "switchDevice": self = .switchDevice(id: id, deviceRef: try values.decode(String.self, forKey: .deviceRef))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: values,
                                                     debugDescription: "Unknown automation step type: \(type)")
@@ -74,6 +77,7 @@ public enum AutomationStep: Codable, Equatable, Identifiable, Sendable {
         case let .openURL(_, url): try values.encode("openURL", forKey: .type); try values.encode(url, forKey: .url)
         case let .wait(_, ms): try values.encode("wait", forKey: .type); try values.encode(ms, forKey: .ms)
         case let .aiStep(_, prompt): try values.encode("aiStep", forKey: .type); try values.encode(prompt, forKey: .prompt)
+        case let .switchDevice(_, deviceRef): try values.encode("switchDevice", forKey: .type); try values.encode(deviceRef, forKey: .deviceRef)
         }
     }
 

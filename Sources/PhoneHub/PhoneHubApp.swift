@@ -34,6 +34,7 @@ struct PhoneHubApp: App {
         presetEngine.runHistoryStore = history
         let runner = AutomationRunner(store: automations, agentEngine: presetEngine)
         runner.runHistoryStore = history
+        runner.deviceResolver = { deviceStore.device(matchingRef: $0) }
         let scheduler = SchedulerRunner(
             scheduleStore: schedules,
             presetStore: presets,

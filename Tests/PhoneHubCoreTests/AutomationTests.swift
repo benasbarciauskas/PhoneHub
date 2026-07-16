@@ -18,7 +18,8 @@ final class AutomationTests: XCTestCase {
             (.scrollTo(id: id, text: "Privacy", direction: "down"), "scrollTo"),
             (.openURL(id: id, url: "https://example.com"), "openURL"),
             (.wait(id: id, ms: 500), "wait"),
-            (.aiStep(id: id, prompt: "dismiss popup"), "aiStep")
+            (.aiStep(id: id, prompt: "dismiss popup"), "aiStep"),
+            (.switchDevice(id: id, deviceRef: "iPhone 15"), "switchDevice")
         ]
 
         for (step, expectedType) in steps {

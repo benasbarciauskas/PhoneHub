@@ -28,10 +28,10 @@ public enum CondensePrompt {
         Output ONLY the JSON array. No markdown, code fences, explanation, or surrounding object.
 
         Every item must have a fresh UUID string in "id" and one discriminator in "type". \
-        Allowed types: launchApp|tap|doubleTap|longPress|typeText|pressKey|swipe|pressHome|pressBack|pressAppSwitcher|scrollTo|openURL|wait|aiStep. \
+        Allowed types: launchApp|tap|doubleTap|longPress|typeText|pressKey|swipe|pressHome|pressBack|pressAppSwitcher|scrollTo|openURL|wait|aiStep|switchDevice. \
         Fields: launchApp{name}; tap/doubleTap{label?,x?,y?}; longPress{label?,x?,y?,durationMs}; \
         typeText{text}; pressKey{key}; swipe{direction}; pressHome/pressBack/pressAppSwitcher{}; \
-        scrollTo{text,direction}; openURL{url}; wait{ms}; aiStep{prompt}. \
+        scrollTo{text,direction}; openURL{url}; wait{ms}; aiStep{prompt}; switchDevice{deviceRef}. \
         For point actions include a semantic label when known; otherwise include both x and y.
 
         Goal:
@@ -87,6 +87,7 @@ public enum CondensePrompt {
         case let .wait(_, ms):
             guard ms >= 0 else { throw CondenseError.invalidResponse("wait must not be negative") }
         case let .aiStep(_, prompt): try require(prompt, field: "prompt")
+        case let .switchDevice(_, deviceRef): try require(deviceRef, field: "deviceRef")
         }
     }
 

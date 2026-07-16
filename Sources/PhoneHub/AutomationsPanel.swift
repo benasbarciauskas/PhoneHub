@@ -9,6 +9,8 @@ struct AutomationsPanel: View {
     let focused: Device?
     let backend: AgentBackend
     let preferKnownSteps: Bool
+    /// Connected device model/label refs for the switch-device step picker.
+    var deviceRefs: [String] = []
 
     @State private var editing: Automation?
     @State private var showingSheet = false
@@ -36,6 +38,17 @@ struct AutomationsPanel: View {
                         .font(.system(size: 10)).foregroundStyle(Theme.warn).lineLimit(2)
                     Spacer()
                     Button("Re-calibrate") { recalibrate(automation) }
+                        .buttonStyle(.plain).foregroundStyle(Theme.accent).font(.system(size: 10))
+                }
+                .padding(Theme.s2).cardSurface(elevated: true).padding(.horizontal, Theme.s2)
+            }
+
+            if case let .pausedNeedsDevice(_, deviceRef) = runner.state {
+                HStack(spacing: Theme.s2) {
+                    Text("Device '\(deviceRef)' not connected — connect it to continue")
+                        .font(.system(size: 10)).foregroundStyle(Theme.warn).lineLimit(3)
+                    Spacer()
+                    Button("Stop") { runner.stop() }
                         .buttonStyle(.plain).foregroundStyle(Theme.accent).font(.system(size: 10))
                 }
                 .padding(Theme.s2).cardSurface(elevated: true).padding(.horizontal, Theme.s2)
@@ -69,7 +82,8 @@ struct AutomationsPanel: View {
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
             if let editing {
-                AutomationEditSheet(automation: editing, engine: agentEngine, backend: backend) { result in
+                AutomationEditSheet(automation: editing, engine: agentEngine, backend: backend,
+                                    deviceRefs: deviceRefs) { result in
                     if store.automations.contains(where: { $0.id == result.id }) { store.update(result) }
                     else { store.add(result) }
                 }

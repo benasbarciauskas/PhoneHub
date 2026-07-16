@@ -7,13 +7,16 @@ struct AutomationEditSheet: View {
     @State private var condenseError: String?
     var engine: AutomationEngine
     let backend: AgentBackend
+    /// Connected device model/label refs for switchDevice steps.
+    let deviceRefs: [String]
     let save: (Automation) -> Void
 
     init(automation: Automation, engine: AutomationEngine, backend: AgentBackend,
-         save: @escaping (Automation) -> Void) {
+         deviceRefs: [String] = [], save: @escaping (Automation) -> Void) {
         _draft = State(initialValue: automation)
         self.engine = engine
         self.backend = backend
+        self.deviceRefs = deviceRefs
         self.save = save
     }
 
@@ -48,7 +51,8 @@ struct AutomationEditSheet: View {
                                           canMoveDown: index + 1 < draft.steps.count,
                                           moveUp: { move(index, -1) },
                                           moveDown: { move(index, 1) },
-                                          delete: { draft.steps.remove(at: index) })
+                                          delete: { draft.steps.remove(at: index) },
+                                          deviceRefs: deviceRefs)
                     }
                 }
                 .padding(Theme.s3)
@@ -108,6 +112,10 @@ struct AutomationEditSheet: View {
             Button("Open URL") { add(.openURL(id: UUID(), url: "https://")) }
             Button("Wait") { add(.wait(id: UUID(), ms: 500)) }
             Button("AI step") { add(.aiStep(id: UUID(), prompt: "")) }
+            Button("Switch device") {
+                let initial = deviceRefs.first ?? ""
+                add(.switchDevice(id: UUID(), deviceRef: initial))
+            }
         } label: { Label("Add step", systemImage: "plus") }
         .menuStyle(.borderlessButton).foregroundStyle(Theme.accent)
     }
