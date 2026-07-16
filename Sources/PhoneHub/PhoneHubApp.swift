@@ -9,10 +9,12 @@ struct PhoneHubApp: App {
     @State private var automationStore: AutomationStore
     @State private var historyStore: RunHistoryStore
     @State private var scheduleStore: ScheduleStore
+    @State private var triggerStore: TriggerStore
     @State private var engine: AutomationEngine
     @State private var chatEngine: ChatEngine
     @State private var automationRunner: AutomationRunner
     @State private var schedulerRunner: SchedulerRunner
+    @State private var triggerRunner: TriggerRunner
     @State private var llmSettings: LLMSettingsModel
     @State private var mirrorRaiseTask: Task<Void, Never>?
 
@@ -29,12 +31,15 @@ struct PhoneHubApp: App {
         let automations = AutomationStore()
         let history = RunHistoryStore()
         let schedules = ScheduleStore()
+        let triggers = TriggerStore()
         let presetEngine = AutomationEngine()
         let chat = ChatEngine()
         presetEngine.runHistoryStore = history
         let runner = AutomationRunner(store: automations, agentEngine: presetEngine)
         runner.runHistoryStore = history
         runner.deviceResolver = { deviceStore.device(matchingRef: $0) }
+        let backendProvider = { LLMConfigStore().load().selectedBackend }
+        let preferKnown = { LLMConfigStore().load().preferKnownSteps }
         let scheduler = SchedulerRunner(
             scheduleStore: schedules,
             presetStore: presets,
@@ -44,8 +49,20 @@ struct PhoneHubApp: App {
             automationRunner: runner,
             chatEngine: chat,
             historyStore: history,
-            backendProvider: { LLMConfigStore().load().selectedBackend },
-            preferKnownStepsProvider: { LLMConfigStore().load().preferKnownSteps }
+            backendProvider: backendProvider,
+            preferKnownStepsProvider: preferKnown
+        )
+        let triggerRunner = TriggerRunner(
+            triggerStore: triggers,
+            presetStore: presets,
+            automationStore: automations,
+            deviceStore: deviceStore,
+            engine: presetEngine,
+            automationRunner: runner,
+            chatEngine: chat,
+            historyStore: history,
+            backendProvider: backendProvider,
+            preferKnownStepsProvider: preferKnown
         )
 
         _store = State(initialValue: deviceStore)
@@ -53,11 +70,13 @@ struct PhoneHubApp: App {
         _automationStore = State(initialValue: automations)
         _historyStore = State(initialValue: history)
         _scheduleStore = State(initialValue: schedules)
+        _triggerStore = State(initialValue: triggers)
         _engine = State(initialValue: presetEngine)
         _chatEngine = State(initialValue: chat)
         _llmSettings = State(initialValue: LLMSettingsModel())
         _automationRunner = State(initialValue: runner)
         _schedulerRunner = State(initialValue: scheduler)
+        _triggerRunner = State(initialValue: triggerRunner)
     }
 
     var body: some Scene {
@@ -65,6 +84,7 @@ struct PhoneHubApp: App {
             HStack(spacing: 0) {
                 Sidebar(store: store, presetStore: presetStore, automationStore: automationStore,
                         historyStore: historyStore, scheduleStore: scheduleStore,
+                        triggerStore: triggerStore,
                         engine: engine, chatEngine: chatEngine, automationRunner: automationRunner,
                         agentBackend: agentBackendBinding, llmSettings: llmSettings)
                 if store.layout != .companion {
@@ -89,6 +109,7 @@ struct PhoneHubApp: App {
             .onAppear {
                 store.refresh()
                 schedulerRunner.start()
+                triggerRunner.start()
             }
             .onChange(of: store.layout) { previous, layout in
                 applyWindowSize(for: layout, previous: previous)
@@ -105,6 +126,7 @@ struct PhoneHubApp: App {
             .onDisappear {
                 mirrorRaiseTask?.cancel()
                 schedulerRunner.stop()
+                triggerRunner.stop()
                 chatEngine.shutdown()
             }
         }
