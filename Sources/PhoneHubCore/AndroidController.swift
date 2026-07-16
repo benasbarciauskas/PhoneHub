@@ -7,6 +7,14 @@ public struct AndroidConnectError: Error, Equatable, Sendable {
 
 public enum AndroidController {
 
+    public static func screenSize(serial: String) -> CGSize? {
+        guard isValidSerial(serial),
+              let result = try? runTool("adb", adbArgs(serial: serial, "shell", "wm", "size")),
+              result.exitCode == 0,
+              let output = String(data: result.stdout, encoding: .utf8) else { return nil }
+        return parseAndroidWindowManagerSize(output)
+    }
+
     /// Discover connected Android devices via `adb`. Never throws on a missing tool.
     public static func discover() -> [Device] {
         guard let res = try? runTool("adb", ["devices", "-l"]),
