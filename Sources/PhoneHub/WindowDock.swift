@@ -344,7 +344,7 @@ private func readAXPosition(_ window: AXUIElement) -> CGPoint? {
     return position
 }
 
-private func readAXTitle(_ window: AXUIElement) -> String? {
+func readAXTitle(_ window: AXUIElement) -> String? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else {
         return nil
@@ -381,7 +381,7 @@ private func repositionAXWindowIfNeeded(_ window: AXUIElement, to point: CGPoint
     return true
 }
 
-private func copyAXAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
+func copyAXAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
         return nil
@@ -389,7 +389,7 @@ private func copyAXAttribute(_ element: AXUIElement, _ attribute: CFString) -> C
     return value
 }
 
-private func firstAXMenu(from menuBarItem: AXUIElement) -> AXUIElement? {
+func firstAXMenu(from menuBarItem: AXUIElement) -> AXUIElement? {
     if let menuValue = copyAXAttribute(menuBarItem, "AXMenu" as CFString),
        CFGetTypeID(menuValue) == AXUIElementGetTypeID() {
         return (menuValue as! AXUIElement)
