@@ -66,7 +66,11 @@ final class AutomationEngine {
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     let apiTextCompletion: (AgentBackend, String) async throws -> String
     private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
-    private let commandGate: (Device?) -> String?
+    /// Settable so tests can bypass live mirror-window sensing.
+    var commandGate: (Device?) -> String? = { device in
+        llmCommandBlockReason(device: device,
+                              iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
+    }
 
     // Interactive-resume state: kept across the awaitingInput pause.
     private var currentPlan: AutomationPlan?
@@ -89,17 +93,12 @@ final class AutomationEngine {
         },
         screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
             LLMConfigStore().load().screenCapturePolicy
-        },
-        commandGate: @escaping (Device?) -> String? = { device in
-            llmCommandBlockReason(device: device,
-                                  iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
         }
     ) {
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
         self.apiTextCompletion = apiTextCompletion
         self.screenCapturePolicyProvider = screenCapturePolicyProvider
-        self.commandGate = commandGate
     }
 
     var isRunning: Bool {

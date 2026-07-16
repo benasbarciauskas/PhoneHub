@@ -22,6 +22,7 @@ final class SchedulerRunnerTests: XCTestCase {
         let engine = AutomationEngine(
             backendAvailability: { _ in .missing(hint: "no") }
         )
+        engine.commandGate = { _ in nil }
         // Make the slot busy via awaitingInput-style: start a failed run? easier — use chat busy.
         // ChatEngine isBusy is turnState == .running; we don't have a clean setter.
         // Instead force engine busy by putting it in failed with history — isBusy is false for failed.
@@ -49,8 +50,11 @@ final class SchedulerRunnerTests: XCTestCase {
         scheduleStore.add(schedule)
 
         let engine2 = AutomationEngine(backendAvailability: { _ in .available(path: "/bin/true") })
+        engine2.commandGate = { _ in nil }
         let chat = ChatEngine()
+        chat.commandGate = { _ in nil }
         let runner = AutomationRunner(store: automations, agentEngine: engine2)
+        runner.commandGate = { _ in nil }
         let scheduler = SchedulerRunner(
             scheduleStore: scheduleStore,
             presetStore: presets,
@@ -85,8 +89,11 @@ final class SchedulerRunnerTests: XCTestCase {
         let automations = AutomationStore(directory: dir.appendingPathComponent("autos"))
         let devices = DeviceStore()
         let engine = AutomationEngine(backendAvailability: { _ in .available(path: "/bin/true") })
+        engine.commandGate = { _ in nil }
         let chat = ChatEngine()
+        chat.commandGate = { _ in nil }
         let runner = AutomationRunner(store: automations, agentEngine: engine)
+        runner.commandGate = { _ in nil }
         let scheduler = SchedulerRunner(
             scheduleStore: scheduleStore,
             presetStore: presets,

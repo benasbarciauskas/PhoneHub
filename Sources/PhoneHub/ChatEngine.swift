@@ -19,7 +19,11 @@ final class ChatEngine {
     private let backendAvailability: (AgentBackend) -> BackendStatus
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
-    private let commandGate: (Device?) -> String?
+    /// Settable so tests can bypass live mirror-window sensing.
+    var commandGate: (Device?) -> String? = { device in
+        llmCommandBlockReason(device: device,
+                              iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
+    }
     private var process: StreamingProcess?
     private var apiTask: Task<Void, Never>?
     private var configURL: URL?
@@ -39,16 +43,11 @@ final class ChatEngine {
          },
          screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
              LLMConfigStore().load().screenCapturePolicy
-         },
-         commandGate: @escaping (Device?) -> String? = { device in
-             llmCommandBlockReason(device: device,
-                                   iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
          }) {
         self.store = store
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
         self.screenCapturePolicyProvider = screenCapturePolicyProvider
-        self.commandGate = commandGate
     }
 
     var isBusy: Bool {

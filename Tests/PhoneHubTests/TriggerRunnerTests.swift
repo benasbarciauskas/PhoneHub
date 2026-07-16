@@ -22,8 +22,11 @@ final class TriggerRunnerTests: XCTestCase {
         let automations = AutomationStore(directory: dir.appendingPathComponent("autos"))
         let devices = DeviceStore()
         let engine = AutomationEngine(backendAvailability: { _ in .available(path: "/bin/true") })
+        engine.commandGate = { _ in nil }
         let chat = ChatEngine()
+        chat.commandGate = { _ in nil }
         let runner = AutomationRunner(store: automations, agentEngine: engine)
+        runner.commandGate = { _ in nil }
         let triggerRunner = TriggerRunner(
             triggerStore: triggerStore,
             presetStore: presets,
