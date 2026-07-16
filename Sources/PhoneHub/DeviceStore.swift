@@ -52,6 +52,23 @@ final class DeviceStore {
         }
     }
 
+    /// Connect an Android device over the network (`adb connect host:port`), then refresh discovery.
+    /// Persists nothing extra — discovery picks up the adb session.
+    func connectAndroid(hostPort: String) async -> Result<String, AndroidConnectError> {
+        let result = await Task.detached(priority: .userInitiated) {
+            AndroidController.connect(hostPort: hostPort)
+        }.value
+
+        if case .success = result {
+            let found = await Task.detached(priority: .userInitiated) {
+                AndroidController.discover() + IOSController.discover()
+            }.value
+            toolMissing = resolveTool("adb") == nil
+            applyDiscovery(found)
+        }
+        return result
+    }
+
     func remove(deviceId: String) {
         removedDeviceIDs.insert(deviceId)
         devices.removeAll { $0.id == deviceId }

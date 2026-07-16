@@ -15,6 +15,7 @@ struct Sidebar: View {
     @State private var renamingDevice: Device?
     @State private var renameText = ""
     @State private var showingSettings = false
+    @State private var showingAddDevice = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -27,6 +28,9 @@ struct Sidebar: View {
                         .fixedSize(horizontal: true, vertical: true)
                         .layoutPriority(1)
                     Spacer()
+                    Button { showingAddDevice = true } label: { Image(systemName: "plus") }
+                        .buttonStyle(.plain).foregroundStyle(Theme.subtext)
+                        .help("Add device")
                     Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain).foregroundStyle(Theme.subtext)
                     Menu {
@@ -145,6 +149,96 @@ struct Sidebar: View {
         }
         .sheet(isPresented: $showingSettings) {
             LLMSettingsView(settings: llmSettings)
+        }
+        .sheet(isPresented: $showingAddDevice) {
+            AddDeviceSheet(store: store)
+        }
+    }
+}
+
+private struct AddDeviceSheet: View {
+    @Bindable var store: DeviceStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var platform: Platform = .android
+    @State private var hostPort = ""
+    @State private var statusMessage: String?
+    @State private var statusIsError = false
+    @State private var isConnecting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.s4) {
+            HStack {
+                Text("Add Device").font(.headline).foregroundStyle(Theme.text)
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+
+            Picker("Platform", selection: $platform) {
+                Text("Android").tag(Platform.android)
+                Text("iOS").tag(Platform.ios)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if platform == .android {
+                VStack(alignment: .leading, spacing: Theme.s2) {
+                    Text("Host:port")
+                        .font(.caption)
+                        .foregroundStyle(Theme.subtext)
+                    TextField("192.168.1.50:5555", text: $hostPort)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isConnecting)
+                        .onSubmit { Task { await connect() } }
+                    Text("Connect over Wi‑Fi after enabling wireless debugging on the phone.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.subtext)
+                    HStack {
+                        Spacer()
+                        Button(isConnecting ? "Connecting…" : "Connect") {
+                            Task { await connect() }
+                        }
+                        .disabled(isConnecting || hostPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            } else {
+                Text("iOS devices connect automatically via iPhone Mirroring — they can't be added manually. Pair the iPhone in the iPhone Mirroring app.")
+                    .font(.callout)
+                    .foregroundStyle(Theme.subtext)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(statusIsError ? Theme.err : Theme.ok)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(Theme.s6)
+        .frame(width: 360)
+        .background(Theme.surface)
+        .onChange(of: platform) { _, _ in
+            statusMessage = nil
+            statusIsError = false
+        }
+    }
+
+    private func connect() async {
+        let value = hostPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        isConnecting = true
+        statusMessage = nil
+        defer { isConnecting = false }
+
+        let result = await store.connectAndroid(hostPort: value)
+        switch result {
+        case .success(let message):
+            statusIsError = false
+            statusMessage = message
+        case .failure(let error):
+            statusIsError = true
+            statusMessage = error.message
         }
     }
 }

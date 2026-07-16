@@ -10,6 +10,23 @@ public func isValidSerial(_ s: String) -> Bool {
     return s.unicodeScalars.allSatisfy { serialAllowed.contains($0) }
 }
 
+/// Validate `host:port` for `adb connect` (no shell; argv only).
+/// Accepts IPv4 or hostname + numeric port (1–65535). Rejects spaces and injection chars.
+public func isValidHostPort(_ s: String) -> Bool {
+    guard !s.isEmpty, s.count <= 128, isValidSerial(s) else { return false }
+    let parts = s.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2 else { return false }
+    let host = parts[0]
+    let port = parts[1]
+    guard !host.isEmpty, !port.isEmpty else { return false }
+    guard port.allSatisfy(\.isNumber),
+          let portNum = Int(port),
+          (1...65535).contains(portNum) else { return false }
+    // Host must not start/end with '.' or be all dots.
+    guard host.first != ".", host.last != ".", host.contains(where: { $0 != "." }) else { return false }
+    return true
+}
+
 public func adbArgs(serial: String, _ rest: String...) -> [String] {
     ["-s", serial] + rest
 }
