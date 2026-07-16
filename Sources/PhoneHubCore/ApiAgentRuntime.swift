@@ -64,14 +64,19 @@ public final class ApiAgentRuntime: @unchecked Sendable {
     /// When true, each decision step captures a screenshot (+ Set-of-Mark list)
     /// and attaches them multimodally to the provider request.
     private let vision: Bool
+    private let captureDecision: ScreenCaptureDecision
 
     public init(provider: any LLMProvider, client: any McpToolClient,
                 sensitiveValues: [String] = [],
-                vision: Bool = false) {
+                vision: Bool = false,
+                captureDecision: ScreenCaptureDecision = screenCaptureDecision(
+                    policy: .always, isRunActive: true
+                )) {
         self.provider = provider
         self.client = client
         self.sensitiveValues = sensitiveValues.filter { !$0.isEmpty }
         self.vision = vision
+        self.captureDecision = captureDecision
     }
 
     public static func live(provider: any LLMProvider,
@@ -95,7 +100,8 @@ public final class ApiAgentRuntime: @unchecked Sendable {
             provider: provider,
             client: McpDirectClient(command: executable, arguments: arguments),
             sensitiveValues: sensitiveValues,
-            vision: vision
+            vision: vision,
+            captureDecision: plan.screenCaptureDecision
         )
     }
 
@@ -225,6 +231,10 @@ public final class ApiAgentRuntime: @unchecked Sendable {
     private func captureVisionFrame(
         onEvent: @escaping @Sendable (StreamEvent) async -> Void
     ) async -> LLMMessage? {
+        if !captureDecision.allowsCapture {
+            return await captureTextFrame(onEvent: onEvent)
+        }
+
         await onEvent(.toolUse(name: "screenshot", summary: "vision capture", rawInput: "{}"))
         let shot: McpToolResult
         do {
@@ -255,6 +265,28 @@ public final class ApiAgentRuntime: @unchecked Sendable {
             return nil
         }
         return VisionCapture.userMessage(image: image, describeText: describe.text)
+    }
+
+    private func captureTextFrame(
+        onEvent: @escaping @Sendable (StreamEvent) async -> Void
+    ) async -> LLMMessage? {
+        await onEvent(.toolUse(
+            name: "describe_screen", summary: "text-only capture", rawInput: "{}"
+        ))
+        let describe: McpToolResult
+        do {
+            describe = try await client.callTool(
+                "describe_screen", arguments: [:], timeoutSeconds: 30
+            )
+        } catch {
+            await onEvent(.toolResult(redact(error.localizedDescription)))
+            return nil
+        }
+        await onEvent(.toolResult(describe.text))
+        guard !describe.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return VisionCapture.userMessage(image: nil, describeText: describe.text)
     }
 
     private func fail(_ message: String,

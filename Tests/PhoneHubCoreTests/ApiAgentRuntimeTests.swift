@@ -203,6 +203,35 @@ final class ApiAgentRuntimeTests: XCTestCase {
         XCTAssertTrue(sent.allSatisfy { $0.image == nil })
     }
 
+    func testDeniedVisionUsesDescriptionWithoutScreenCapture() async throws {
+        let provider = CapturingProvider([
+            LLMResponse(text: "Done.", toolCalls: [])
+        ])
+        let client = MapMCPClient(results: [
+            "describe_screen": McpToolResult(
+                text: #"- "Settings" button at (209, 100)"#, isError: false
+            )
+        ])
+        let runtime = ApiAgentRuntime(
+            provider: provider,
+            client: client,
+            vision: true,
+            captureDecision: screenCaptureDecision(policy: .disabled, isRunActive: true)
+        )
+
+        let result = await runtime.run(
+            systemPreamble: "system", prompt: "goal", priorMessages: [],
+            maxToolCalls: 2, serverName: "mirroir", onEvent: { _ in }
+        )
+
+        XCTAssertEqual(result.outcome, .completed("Done."))
+        XCTAssertEqual(client.calls.map(\.name), ["describe_screen"])
+        let sent = await provider.firstMessages()
+        let description = try XCTUnwrap(sent.last)
+        XCTAssertNil(description.image)
+        XCTAssertTrue(description.content?.contains("[1] Settings") == true)
+    }
+
     /// 1×1 PNG fixture — tests only.
     private static let tinyPNGBase64 =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="

@@ -36,6 +36,7 @@ final class LLMSettingsModel {
     var visionEnabled: Bool { config.vision }
     var screenDescriberMode: ScreenDescriberMode { config.screenDescriberMode }
     var preferKnownSteps: Bool { config.preferKnownSteps }
+    var screenCapturePolicy: ScreenCapturePolicy { config.screenCapturePolicy }
 
     func selectBackend(_ backend: AgentBackend) {
         config.selectedBackend = backend
@@ -64,6 +65,11 @@ final class LLMSettingsModel {
 
     func setPreferKnownSteps(_ enabled: Bool) {
         config.preferKnownSteps = enabled
+        persistConfig()
+    }
+
+    func setScreenCapturePolicy(_ policy: ScreenCapturePolicy) {
+        config.screenCapturePolicy = policy
         persistConfig()
     }
 

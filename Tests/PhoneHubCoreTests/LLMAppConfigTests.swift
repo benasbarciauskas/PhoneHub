@@ -9,6 +9,7 @@ final class LLMAppConfigTests: XCTestCase {
         XCTAssertFalse(config.vision)
         XCTAssertEqual(config.screenDescriberMode, .auto)
         XCTAssertFalse(config.preferKnownSteps)
+        XCTAssertEqual(config.screenCapturePolicy, .duringRunsOnly)
         XCTAssertEqual(config.model(forProvider: "openrouter"), "anthropic/claude-3.5-sonnet")
         XCTAssertEqual(config.model(forProvider: "openai"), "gpt-4.1")
         XCTAssertEqual(config.model(forProvider: "anthropic"), "claude-sonnet-4-20250514")
@@ -21,6 +22,7 @@ final class LLMAppConfigTests: XCTestCase {
         config.vision = true
         config.screenDescriberMode = .vision
         config.preferKnownSteps = true
+        config.screenCapturePolicy = .always
 
         let data = try JSONEncoder().encode(config)
         let json = String(decoding: data, as: UTF8.self).lowercased()
@@ -36,6 +38,7 @@ final class LLMAppConfigTests: XCTestCase {
         XCTAssertFalse(config.vision)
         XCTAssertEqual(config.screenDescriberMode, .auto)
         XCTAssertFalse(config.preferKnownSteps)
+        XCTAssertEqual(config.screenCapturePolicy, .duringRunsOnly)
     }
 
     func testLegacyConfigWithoutPreferKnownStepsDecodesAsFalse() throws {
@@ -44,6 +47,7 @@ final class LLMAppConfigTests: XCTestCase {
         XCTAssertFalse(config.preferKnownSteps)
         XCTAssertTrue(config.vision)
         XCTAssertEqual(config.screenDescriberMode, .ocr)
+        XCTAssertEqual(config.screenCapturePolicy, .duringRunsOnly)
     }
 
     func testScreenDescriberModeRoundTrip() throws {
@@ -52,6 +56,16 @@ final class LLMAppConfigTests: XCTestCase {
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(LLMAppConfig.self, from: data)
         XCTAssertEqual(decoded.screenDescriberMode, .ocr)
+    }
+
+    func testScreenCapturePolicyRoundTrip() throws {
+        var config = LLMAppConfig.default
+        config.screenCapturePolicy = .disabled
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(LLMAppConfig.self, from: data)
+
+        XCTAssertEqual(decoded.screenCapturePolicy, .disabled)
     }
 
     func testStoreMigratesLegacyBackendOnlyWhenNewConfigIsAbsent() throws {

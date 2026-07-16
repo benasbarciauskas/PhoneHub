@@ -115,6 +115,24 @@ final class LLMSettingsModelTests: XCTestCase {
         XCTAssertFalse(store.load().preferKnownSteps)
     }
 
+    func testScreenCapturePolicyPersistsInConfig() throws {
+        let suite = "LLMSettingsModelTests.capturePolicy.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LLMConfigStore(defaults: defaults)
+        let model = LLMSettingsModel(
+            configStore: store,
+            keyLookup: { _ in nil },
+            keySetter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+
+        XCTAssertEqual(model.screenCapturePolicy, .duringRunsOnly)
+        model.setScreenCapturePolicy(.disabled)
+        XCTAssertEqual(model.screenCapturePolicy, .disabled)
+        XCTAssertEqual(store.load().screenCapturePolicy, .disabled)
+    }
+
     private func ephemeralDefaults() -> UserDefaults {
         UserDefaults(suiteName: "LLMSettingsModelTests.\(UUID().uuidString)")!
     }

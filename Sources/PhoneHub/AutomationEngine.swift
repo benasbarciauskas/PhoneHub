@@ -64,6 +64,7 @@ final class AutomationEngine {
     private let backendAvailability: (AgentBackend) -> BackendStatus
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     private let apiTextCompletion: (AgentBackend, String) async throws -> String
+    private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
 
     // Interactive-resume state: kept across the awaitingInput pause.
     private var currentPlan: AutomationPlan?
@@ -83,11 +84,15 @@ final class AutomationEngine {
         },
         apiTextCompletion: @escaping (AgentBackend, String) async throws -> String = {
             try await configuredAPITextCompletion(backend: $0, prompt: $1)
+        },
+        screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
+            LLMConfigStore().load().screenCapturePolicy
         }
     ) {
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
         self.apiTextCompletion = apiTextCompletion
+        self.screenCapturePolicyProvider = screenCapturePolicyProvider
     }
 
     var isRunning: Bool {
@@ -117,7 +122,9 @@ final class AutomationEngine {
         do {
             let plan = try buildAutomationPlan(
                 preset: preset, device: device, backend: backend,
-                preferKnownSteps: preferKnownSteps)
+                preferKnownSteps: preferKnownSteps,
+                screenCapturePolicy: screenCapturePolicyProvider(),
+                isRunActive: true)
             launch(plan: plan, preset: preset, device: device,
                    header: "Running “\(preset.name)” on \(device.model)…")
         } catch AutomationPlanError.platformMismatch {
@@ -141,7 +148,9 @@ final class AutomationEngine {
         do {
             let plan = try buildAutomationPlan(
                 preset: preset, device: device, backend: backend,
-                preferKnownSteps: preferKnownSteps)
+                preferKnownSteps: preferKnownSteps,
+                screenCapturePolicy: screenCapturePolicyProvider(),
+                isRunActive: true)
             launch(plan: plan, preset: preset, device: device,
                    header: "Running “\(title)” on \(device.model)…")
         } catch {
@@ -171,6 +180,9 @@ final class AutomationEngine {
         runningPreset = preset
         currentAction = "Starting…"
         log = [header]
+        if let notice = plan.screenCaptureDecision.logMessage {
+            log.append(notice)
+        }
 
         // iOS: write mirroir screenDescriberMode into ~/.mirroir-mcp/config.json before spawn.
         prepareMirroirConfigForSpawn(serverName: plan.serverName)

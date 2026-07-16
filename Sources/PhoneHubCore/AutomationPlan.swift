@@ -42,6 +42,7 @@ public struct AutomationPlan: Equatable {
     public let allowedTools: String     // value for --allowedTools
     public let maxTurns: Int            // value for --max-turns
     public let serverName: String       // "mirroir" | "androir"
+    public let screenCaptureDecision: ScreenCaptureDecision
 
     /// Full argv passed to the resolved backend binary (excludes the binary path).
     /// mcpConfigPath is the temp file the caller has written mcpConfigJSON into.
@@ -54,7 +55,8 @@ public struct AutomationPlan: Equatable {
             "--output-format", "stream-json",
             "--verbose",
             "--mcp-config", mcpConfigPath,
-            "--allowedTools", allowedTools,
+            "--allowedTools", allowedTools
+            ] + claudeCaptureArguments + [
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
             ]
@@ -91,7 +93,8 @@ public struct AutomationPlan: Equatable {
             "--output-format", "stream-json",
             "--verbose",
             "--mcp-config", mcpConfigPath,
-            "--allowedTools", allowedTools,
+            "--allowedTools", allowedTools
+            ] + claudeCaptureArguments + [
             "--max-turns", String(maxTurns),
             "--permission-mode", "default"
             ]
@@ -106,6 +109,13 @@ public struct AutomationPlan: Equatable {
         }
     }
 
+    private var claudeCaptureArguments: [String] {
+        let tools = screenCaptureDecision.deniedTools.map {
+            "mcp__\(serverName)__\($0)"
+        }.joined(separator: ",")
+        return tools.isEmpty ? [] : ["--disallowedTools", tools]
+    }
+
     private var codexMCPArguments: [String] {
         let args: String
         switch serverName {
@@ -116,11 +126,20 @@ public struct AutomationPlan: Equatable {
         default:
             args = "[]"
         }
-        return [
+        var result = [
             "-c", "mcp_servers.\(serverName).command=npx",
             "-c", "mcp_servers.\(serverName).args=\(args)",
             "-c", "mcp_servers.\(serverName).default_tools_approval_mode=\"approve\""
         ]
+        if !screenCaptureDecision.deniedTools.isEmpty {
+            let tools = screenCaptureDecision.deniedTools
+                .map { "\"\($0)\"" }
+                .joined(separator: ",")
+            result += [
+                "-c", "mcp_servers.\(serverName).disabled_tools=[\(tools)]"
+            ]
+        }
+        return result
     }
 }
 
@@ -162,6 +181,18 @@ look at it with the tools and describe what you see. When asked to act, act \
 with the tools. Use only the attached phone-control tools. If unsure, ask the \
 user instead of guessing — just end your reply with the question.
 """
+
+public let captureDeniedInstruction = """
+Screen capture is unavailable for this turn. Do not call screenshot, \
+start_recording, or stop_recording; use describe_screen only.
+"""
+
+private func applyingCaptureDecision(
+    to preamble: String,
+    decision: ScreenCaptureDecision
+) -> String {
+    decision.allowsCapture ? preamble : preamble + "\n\n" + captureDeniedInstruction
+}
 
 private struct PlatformWiring {
     let server: String
@@ -206,7 +237,9 @@ public func buildAutomationPlan(
     preset: Preset,
     device: Device,
     backend: AgentBackend = .claude,
-    preferKnownSteps: Bool = false
+    preferKnownSteps: Bool = false,
+    screenCapturePolicy: ScreenCapturePolicy = .duringRunsOnly,
+    isRunActive: Bool = true
 ) throws -> AutomationPlan {
     guard preset.supports(device.platform) else {
         throw AutomationPlanError.platformMismatch
@@ -226,15 +259,23 @@ public func buildAutomationPlan(
         presetOverride: preset.preferKnownSteps,
         appDefault: preferKnownSteps
     )
+    let captureDecision = screenCaptureDecision(
+        policy: screenCapturePolicy,
+        isRunActive: isRunActive
+    )
 
     return AutomationPlan(
         backend: preset.backend ?? backend,
         prompt: prompt,
-        systemPreamble: buildAutomationSystemPreamble(preferKnownSteps: prefer),
+        systemPreamble: applyingCaptureDecision(
+            to: buildAutomationSystemPreamble(preferKnownSteps: prefer),
+            decision: captureDecision
+        ),
         mcpConfigJSON: wiring.mcpJSON,
         allowedTools: wiring.allowedTools,
         maxTurns: preset.maxSteps,
-        serverName: wiring.server
+        serverName: wiring.server,
+        screenCaptureDecision: captureDecision
     )
 }
 
@@ -258,17 +299,27 @@ public func presetPayloadPreview(preset: Preset, device: Device,
 
 public func buildChatPlan(
     device: Device,
-    backend: AgentBackend = .claude
+    backend: AgentBackend = .claude,
+    screenCapturePolicy: ScreenCapturePolicy = .duringRunsOnly,
+    isRunActive: Bool = true
 ) throws -> AutomationPlan {
     let wiring = try platformWiring(for: device)
+    let captureDecision = screenCaptureDecision(
+        policy: screenCapturePolicy,
+        isRunActive: isRunActive
+    )
     return AutomationPlan(
         backend: backend,
         prompt: "",
-        systemPreamble: "\(chatSystemPreamble)\n\n\(wiring.deviceContext)",
+        systemPreamble: applyingCaptureDecision(
+            to: "\(chatSystemPreamble)\n\n\(wiring.deviceContext)",
+            decision: captureDecision
+        ),
         mcpConfigJSON: wiring.mcpJSON,
         allowedTools: wiring.allowedTools,
         maxTurns: 25,
-        serverName: wiring.server
+        serverName: wiring.server,
+        screenCaptureDecision: captureDecision
     )
 }
 
