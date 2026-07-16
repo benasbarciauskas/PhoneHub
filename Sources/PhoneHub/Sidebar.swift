@@ -14,13 +14,29 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
-            HStack {
-                Text("Devices")
-                    .font(.headline)
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
+            VStack(spacing: Theme.s2) {
+                HStack {
+                    Text("Devices")
+                        .font(.headline)
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .layoutPriority(1)
+                    Spacer()
+                    Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.plain).foregroundStyle(Theme.subtext)
+                    Menu {
+                        Picker("Agent backend", selection: $agentBackend) {
+                            ForEach(AgentBackend.allCases, id: \.self) { backend in
+                                Text(backend.rawValue.capitalized).tag(backend)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .foregroundStyle(Theme.subtext)
+                }
                 Picker("Layout", selection: $store.layout) {
                     ForEach(StageLayout.allCases) { layout in
                         Text(layout.title).tag(layout)
@@ -28,20 +44,7 @@ struct Sidebar: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 112)
-                Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.plain).foregroundStyle(Theme.subtext)
-                Menu {
-                    Picker("Agent backend", selection: $agentBackend) {
-                        ForEach(AgentBackend.allCases, id: \.self) { backend in
-                            Text(backend.rawValue.capitalized).tag(backend)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .menuStyle(.borderlessButton)
-                .foregroundStyle(Theme.subtext)
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, Theme.s3).padding(.top, Theme.s3)
 
