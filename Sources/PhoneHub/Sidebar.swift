@@ -7,6 +7,7 @@ struct Sidebar: View {
     @Bindable var automationStore: AutomationStore
     @Bindable var historyStore: RunHistoryStore
     @Bindable var scheduleStore: ScheduleStore
+    @Bindable var triggerStore: TriggerStore
     var engine: AutomationEngine
     var chatEngine: ChatEngine
     var automationRunner: AutomationRunner
@@ -153,6 +154,7 @@ struct Sidebar: View {
                     HistoryPanel(
                         historyStore: historyStore,
                         scheduleStore: scheduleStore,
+                        triggerStore: triggerStore,
                         focused: store.focusedDevice,
                         displayName: { store.displayName(for: $0) },
                         presetStore: presetStore,

@@ -5,6 +5,7 @@ import PhoneHubCore
 struct HistoryPanel: View {
     @Bindable var historyStore: RunHistoryStore
     @Bindable var scheduleStore: ScheduleStore
+    @Bindable var triggerStore: TriggerStore
     let focused: Device?
     let displayName: (Device) -> String
     var presetStore: PresetStore
@@ -13,6 +14,7 @@ struct HistoryPanel: View {
 
     @State private var selected: RunRecord?
     @State private var showingSchedules = false
+    @State private var showingTriggers = false
 
     private var records: [RunRecord] {
         guard let focused else { return [] }
@@ -21,9 +23,18 @@ struct HistoryPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
-            HStack {
+            HStack(spacing: Theme.s2) {
                 Text("History").font(.headline).foregroundStyle(Theme.text)
                 Spacer()
+                Button {
+                    showingTriggers = true
+                } label: {
+                    Label("Triggers", systemImage: "bolt")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .help("Manage event triggers (Android)")
                 Button {
                     showingSchedules = true
                 } label: {
@@ -66,6 +77,16 @@ struct HistoryPanel: View {
         .sheet(isPresented: $showingSchedules) {
             SchedulesPanel(
                 scheduleStore: scheduleStore,
+                presetStore: presetStore,
+                automationStore: automationStore,
+                devices: devices,
+                displayName: displayName,
+                focused: focused
+            )
+        }
+        .sheet(isPresented: $showingTriggers) {
+            TriggersPanel(
+                triggerStore: triggerStore,
                 presetStore: presetStore,
                 automationStore: automationStore,
                 devices: devices,
