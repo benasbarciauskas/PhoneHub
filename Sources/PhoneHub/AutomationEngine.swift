@@ -56,6 +56,9 @@ final class AutomationEngine {
     private(set) var isCondensing = false
     private(set) var lastCapture: [CapturedCall] = []
 
+    /// Optional; when set, every terminal preset run is appended to per-device history.
+    var runHistoryStore: RunHistoryStore?
+
     private var process: StreamingProcess?
     private var configURL: URL?
     private var apiTask: Task<Void, Never>?
@@ -69,6 +72,9 @@ final class AutomationEngine {
     private var sessionId: String?
     private var pendingQuestion: String?
     private var currentCapture: [CapturedCall] = []
+
+    /// Active run metadata for history; cleared once a terminal outcome is recorded.
+    var historyContext: RunHistoryContext?
 
     init(
         backendAvailability: @escaping (AgentBackend) -> BackendStatus = {
@@ -108,6 +114,7 @@ final class AutomationEngine {
     /// Start a saved preset on a device. No-op if a run is already active/paused.
     func run(preset: Preset, on device: Device, backend: AgentBackend = .claude) {
         guard !isBusy else { return }
+        beginHistory(name: preset.name, device: device)
         let plan: AutomationPlan
         do {
             plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
@@ -131,6 +138,7 @@ final class AutomationEngine {
         let preset = Preset(name: "Command",
                             goal: trimmed,
                             platforms: [device.platform])
+        beginHistory(name: preset.name, device: device)
         let plan: AutomationPlan
         do {
             plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
@@ -148,6 +156,10 @@ final class AutomationEngine {
         guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
+        }
+        // Ensure history is bound even if a caller invoked launch without beginHistory.
+        if historyContext == nil {
+            beginHistory(name: preset.name, device: device)
         }
         currentPlan = plan
         sessionId = nil
@@ -263,17 +275,23 @@ final class AutomationEngine {
             state = .finished
             currentAction = "Finished"
             lastCapture = currentCapture
+            recordHistory(.finished)
         case .needsInput(let question):
             state = .awaitingInput(question: question)
             currentAction = "Needs input"
         case .failed(let message):
             state = .failed(message)
             currentAction = "Failed"
+            recordHistory(.failed)
         case .maxStepsReached:
             state = .failed("Step limit reached.")
             currentAction = "Failed"
+            recordHistory(.failed)
         case .cancelled:
-            if case .running = state { state = .stopped }
+            if case .running = state {
+                state = .stopped
+                recordHistory(.stopped)
+            }
         }
     }
 
@@ -339,6 +357,7 @@ final class AutomationEngine {
     func dismissResult() {
         guard !isBusy else { return }
         cleanupConfig() // defensive: no-op if already cleaned; prevents temp-file leaks
+        historyContext = nil
         state = .idle
         runningPreset = nil
         currentAction = nil
@@ -363,6 +382,7 @@ final class AutomationEngine {
             currentAction = "Stopped"
             pendingQuestion = nil
             log.append("— Stopped by user —")
+            recordHistory(.stopped)
         }
         if wasAwaitingInput {
             cleanupConfig()
@@ -406,6 +426,7 @@ final class AutomationEngine {
         process = nil
         switch state {
         case .stopped:
+            // History already recorded in stop().
             cleanupConfig()
         case .running:
             // A pending NEED_INPUT pauses the run instead of finishing/failing.
@@ -419,12 +440,14 @@ final class AutomationEngine {
                 state = .finished
                 currentAction = "Finished"
                 lastCapture = currentCapture
+                recordHistory(.finished)
             } else {
                 let backend = currentPlan?.backend.rawValue ?? "agent"
                 let msg = reason.isEmpty ? "\(backend) exited with code \(code)" : "\(backend) \(reason)"
                 state = .failed(msg)
                 currentAction = "Failed"
                 log.append(msg)
+                recordHistory(.failed)
             }
             cleanupConfig()
         default:
@@ -436,6 +459,7 @@ final class AutomationEngine {
         state = .failed(message)
         currentAction = "Failed"
         log.append(message)
+        recordHistory(.failed)
     }
 
     private func writeConfig(_ json: String) -> URL? {
