@@ -112,6 +112,9 @@ public struct Automation: Codable, Equatable, Identifiable, Sendable {
     public var loop: LoopMode
     public var sharedCoordinates: Bool
     public var bindings: [String: [String: Binding]]
+    /// Parallel metadata keeps source-bound text compatible with old `.typeText`
+    /// step JSON and with community formats that only understand literal text.
+    public var textSourceBindings: [UUID: TextSourceRef]
     public var pinned: Bool
     public var sourceGoal: String?
 
@@ -119,10 +122,55 @@ public struct Automation: Codable, Equatable, Identifiable, Sendable {
                 rawSteps: [AutomationStep]? = nil, useCondensed: Bool = true,
                 loop: LoopMode = .once, sharedCoordinates: Bool = false,
                 bindings: [String: [String: Binding]] = [:], pinned: Bool = false,
+                textSourceBindings: [UUID: TextSourceRef] = [:],
                 sourceGoal: String? = nil) {
         self.id = id; self.name = name; self.platform = platform; self.steps = steps
         self.rawSteps = rawSteps; self.useCondensed = useCondensed; self.loop = loop
         self.sharedCoordinates = sharedCoordinates; self.bindings = bindings
+        self.textSourceBindings = textSourceBindings
         self.pinned = pinned; self.sourceGoal = sourceGoal
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, platform, steps, rawSteps, useCondensed, loop
+        case sharedCoordinates, bindings, textSourceBindings, pinned, sourceGoal
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        platform = try values.decode(Platform.self, forKey: .platform)
+        steps = try values.decode([AutomationStep].self, forKey: .steps)
+        rawSteps = try values.decodeIfPresent([AutomationStep].self, forKey: .rawSteps)
+        useCondensed = try values.decodeIfPresent(Bool.self, forKey: .useCondensed) ?? true
+        loop = try values.decodeIfPresent(LoopMode.self, forKey: .loop) ?? .once
+        sharedCoordinates = try values.decodeIfPresent(Bool.self, forKey: .sharedCoordinates) ?? false
+        bindings = try values.decodeIfPresent(
+            [String: [String: Binding]].self,
+            forKey: .bindings
+        ) ?? [:]
+        textSourceBindings = try values.decodeIfPresent(
+            [UUID: TextSourceRef].self,
+            forKey: .textSourceBindings
+        ) ?? [:]
+        pinned = try values.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        sourceGoal = try values.decodeIfPresent(String.self, forKey: .sourceGoal)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(name, forKey: .name)
+        try values.encode(platform, forKey: .platform)
+        try values.encode(steps, forKey: .steps)
+        try values.encodeIfPresent(rawSteps, forKey: .rawSteps)
+        try values.encode(useCondensed, forKey: .useCondensed)
+        try values.encode(loop, forKey: .loop)
+        try values.encode(sharedCoordinates, forKey: .sharedCoordinates)
+        try values.encode(bindings, forKey: .bindings)
+        try values.encode(textSourceBindings, forKey: .textSourceBindings)
+        try values.encode(pinned, forKey: .pinned)
+        try values.encodeIfPresent(sourceGoal, forKey: .sourceGoal)
     }
 }
