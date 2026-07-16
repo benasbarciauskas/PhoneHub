@@ -11,7 +11,8 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
         selectedBackend: .claude,
         models: defaultModels,
         vision: false,
-        screenDescriberMode: .auto
+        screenDescriberMode: .auto,
+        preferKnownSteps: false
     )
 
     public var selectedBackend: AgentBackend
@@ -21,14 +22,18 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     public var vision: Bool
     /// mirroir-mcp screen describer mode (iOS only). Default Auto matches today.
     public var screenDescriberMode: ScreenDescriberMode
+    /// App default for reusing compiled/recorded skills (preset may override).
+    public var preferKnownSteps: Bool
 
     public init(selectedBackend: AgentBackend, models: [String: String],
                 vision: Bool = false,
-                screenDescriberMode: ScreenDescriberMode = .auto) {
+                screenDescriberMode: ScreenDescriberMode = .auto,
+                preferKnownSteps: Bool = false) {
         self.selectedBackend = selectedBackend
         self.models = models
         self.vision = vision
         self.screenDescriberMode = screenDescriberMode
+        self.preferKnownSteps = preferKnownSteps
     }
 
     public func model(forProvider provider: String) -> String {
@@ -41,7 +46,7 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case selectedBackend, models, vision, screenDescriberMode
+        case selectedBackend, models, vision, screenDescriberMode, preferKnownSteps
     }
 
     public init(from decoder: Decoder) throws {
@@ -52,6 +57,7 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
         screenDescriberMode = try container.decodeIfPresent(
             ScreenDescriberMode.self, forKey: .screenDescriberMode
         ) ?? .auto
+        preferKnownSteps = try container.decodeIfPresent(Bool.self, forKey: .preferKnownSteps) ?? false
     }
 }
 

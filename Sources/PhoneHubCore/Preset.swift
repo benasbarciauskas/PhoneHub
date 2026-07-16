@@ -10,6 +10,8 @@ public struct Preset: Codable, Identifiable, Equatable, Sendable {
     public var platforms: [Platform]   // [.ios], [.android], or both
     public var maxSteps: Int           // hard cap on agent actions
     public var backend: AgentBackend?  // nil inherits the app default
+    /// Prefer reusing mirroir compiled/recorded skills. nil inherits the app default.
+    public var preferKnownSteps: Bool?
 
     public init(id: UUID = UUID(),
                 name: String,
@@ -17,7 +19,8 @@ public struct Preset: Codable, Identifiable, Equatable, Sendable {
                 app: String? = nil,
                 platforms: [Platform],
                 maxSteps: Int = 40,
-                backend: AgentBackend? = nil) {
+                backend: AgentBackend? = nil,
+                preferKnownSteps: Bool? = nil) {
         self.id = id
         self.name = name
         self.goal = goal
@@ -25,6 +28,7 @@ public struct Preset: Codable, Identifiable, Equatable, Sendable {
         self.platforms = platforms
         self.maxSteps = maxSteps
         self.backend = backend
+        self.preferKnownSteps = preferKnownSteps
     }
 
     /// Whether this preset can run on the given device's platform.

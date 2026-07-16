@@ -10,6 +10,7 @@ struct Stage: View {
     var presetEngine: AutomationEngine
     var chatEngine: ChatEngine
     let agentBackend: AgentBackend
+    let preferKnownSteps: Bool
 
     @State var scrcpyController = ScrcpyController()
     @State var mirroringController = MirroringController()
@@ -60,7 +61,8 @@ struct Stage: View {
                 PinnedAutomationBar(store: automationStore, runner: automationRunner,
                                     focused: store.focusedDevice,
                                     othersBusy: presetEngine.isBusy || chatEngine.isBusy,
-                                    backend: agentBackend)
+                                    backend: agentBackend,
+                                    preferKnownSteps: preferKnownSteps)
                     .padding(.top, Theme.s3)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }

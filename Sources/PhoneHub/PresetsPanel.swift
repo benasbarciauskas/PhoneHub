@@ -11,6 +11,7 @@ struct PresetsPanel: View {
     var automationBusy: Bool
     let focused: Device?
     let agentBackend: AgentBackend
+    let preferKnownSteps: Bool
 
     @State private var editing: Preset?
     @State private var showingSheet = false
@@ -68,7 +69,8 @@ struct PresetsPanel: View {
         .padding(.bottom, Theme.s3)
         .sheet(isPresented: $showingSheet) {
             PresetEditSheet(preset: editing, prefillGoal: prefillGoal,
-                            focusedDevice: focused, engine: engine) { result in
+                            focusedDevice: focused, engine: engine,
+                            appPreferKnownSteps: preferKnownSteps) { result in
                 if let existing = editing, existing.id == result.id {
                     store.update(result)
                 } else {
@@ -91,7 +93,8 @@ struct PresetsPanel: View {
                     if let device = focused {
                         let goal = command
                         command = ""
-                        engine.runAdhoc(goal: goal, on: device, backend: agentBackend)
+                        engine.runAdhoc(goal: goal, on: device, backend: agentBackend,
+                                        preferKnownSteps: preferKnownSteps)
                     }
                 } label: {
                     Label("Run", systemImage: "play.fill").font(.system(size: 11, weight: .semibold))
@@ -164,7 +167,8 @@ struct PresetsPanel: View {
                     canRun: canRun(preset),
                     onRun: {
                         if let device = focused {
-                            engine.run(preset: preset, on: device, backend: agentBackend)
+                            engine.run(preset: preset, on: device, backend: agentBackend,
+                                       preferKnownSteps: preferKnownSteps)
                         }
                     },
                     onEdit: { editing = preset; prefillGoal = ""; showingSheet = true },

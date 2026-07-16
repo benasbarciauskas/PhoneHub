@@ -315,4 +315,52 @@ final class AutomationPlanTests: XCTestCase {
         guard let mIdx = resume.firstIndex(of: "--max-turns") else { return XCTFail("missing --max-turns") }
         XCTAssertEqual(resume[mIdx + 1], "22")
     }
+
+    // MARK: - Prefer known steps
+
+    func testBuildAutomationSystemPreambleOffLeavesBaseUnchanged() {
+        let preamble = buildAutomationSystemPreamble(preferKnownSteps: false)
+        XCTAssertEqual(preamble, automationSystemPreamble)
+        XCTAssertFalse(preamble.contains(preferKnownStepsInstruction))
+    }
+
+    func testBuildAutomationSystemPreambleOnAppendsInstruction() {
+        let preamble = buildAutomationSystemPreamble(preferKnownSteps: true)
+        XCTAssertTrue(preamble.hasPrefix(automationSystemPreamble))
+        XCTAssertTrue(preamble.contains(preferKnownStepsInstruction))
+        XCTAssertTrue(preamble.contains("known/compiled steps"))
+        XCTAssertNotEqual(preamble, automationSystemPreamble)
+    }
+
+    func testEffectivePreferKnownStepsResolution() {
+        XCTAssertFalse(effectivePreferKnownSteps(presetOverride: nil, appDefault: false))
+        XCTAssertTrue(effectivePreferKnownSteps(presetOverride: nil, appDefault: true))
+        XCTAssertTrue(effectivePreferKnownSteps(presetOverride: true, appDefault: false))
+        XCTAssertFalse(effectivePreferKnownSteps(presetOverride: false, appDefault: true))
+        XCTAssertTrue(effectivePreferKnownSteps(presetOverride: true, appDefault: true))
+        XCTAssertFalse(effectivePreferKnownSteps(presetOverride: false, appDefault: false))
+    }
+
+    func testPreferKnownStepsAppDefaultThreadsIntoPlanPreamble() throws {
+        let preset = Preset(name: "p", goal: "g", platforms: [.ios])
+        let off = try buildAutomationPlan(preset: preset, device: iosDevice, preferKnownSteps: false)
+        XCTAssertEqual(off.systemPreamble, automationSystemPreamble)
+
+        let on = try buildAutomationPlan(preset: preset, device: iosDevice, preferKnownSteps: true)
+        XCTAssertTrue(on.systemPreamble.contains(preferKnownStepsInstruction))
+    }
+
+    func testPreferKnownStepsPresetOverrideBeatsAppDefault() throws {
+        let prefer = Preset(name: "p", goal: "g", platforms: [.ios], preferKnownSteps: true)
+        let planPrefer = try buildAutomationPlan(
+            preset: prefer, device: iosDevice, preferKnownSteps: false
+        )
+        XCTAssertTrue(planPrefer.systemPreamble.contains(preferKnownStepsInstruction))
+
+        let dont = Preset(name: "p", goal: "g", platforms: [.ios], preferKnownSteps: false)
+        let planDont = try buildAutomationPlan(
+            preset: dont, device: iosDevice, preferKnownSteps: true
+        )
+        XCTAssertEqual(planDont.systemPreamble, automationSystemPreamble)
+    }
 }

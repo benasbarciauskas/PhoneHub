@@ -17,6 +17,7 @@ final class AutomationRunner {
     private(set) var log: [String] = []
     private(set) var runningAutomationID: UUID?
     var backend: AgentBackend = .claude
+    var preferKnownSteps: Bool = false
 
     /// Optional; when set, every terminal automation run is appended to per-device history.
     var runHistoryStore: RunHistoryStore?
@@ -177,7 +178,8 @@ final class AutomationRunner {
     }
 
     private func runAIStep(_ prompt: String, on device: Device) async throws {
-        agentEngine.runAdhoc(goal: prompt, on: device, backend: backend)
+        agentEngine.runAdhoc(goal: prompt, on: device, backend: backend,
+                             preferKnownSteps: preferKnownSteps)
         while agentEngine.isBusy {
             if agentEngine.isAwaitingInput { throw RunnerError.ai("AI step needs input.") }
             try await Task.sleep(nanoseconds: 100_000_000)

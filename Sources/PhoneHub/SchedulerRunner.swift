@@ -16,6 +16,7 @@ final class SchedulerRunner {
     private let chatEngine: ChatEngine
     private let historyStore: RunHistoryStore
     private let backendProvider: () -> AgentBackend
+    private let preferKnownStepsProvider: () -> Bool
 
     private var timer: Timer?
     private let pollInterval: TimeInterval
@@ -30,6 +31,7 @@ final class SchedulerRunner {
         chatEngine: ChatEngine,
         historyStore: RunHistoryStore,
         backendProvider: @escaping () -> AgentBackend,
+        preferKnownStepsProvider: @escaping () -> Bool = { false },
         pollInterval: TimeInterval = 15
     ) {
         self.scheduleStore = scheduleStore
@@ -41,6 +43,7 @@ final class SchedulerRunner {
         self.chatEngine = chatEngine
         self.historyStore = historyStore
         self.backendProvider = backendProvider
+        self.preferKnownStepsProvider = preferKnownStepsProvider
         self.pollInterval = pollInterval
     }
 
@@ -99,7 +102,8 @@ final class SchedulerRunner {
                 appendSkip(schedule, reason: "skipped (preset missing)", at: now)
                 return
             }
-            engine.run(preset: preset, on: device, backend: backendProvider())
+            engine.run(preset: preset, on: device, backend: backendProvider(),
+                       preferKnownSteps: preferKnownStepsProvider())
         case .automation:
             guard let automation = automationStore.automations.first(where: { $0.id == schedule.targetId }) else {
                 appendSkip(schedule, reason: "skipped (automation missing)", at: now)
@@ -107,6 +111,7 @@ final class SchedulerRunner {
             }
             let othersBusy = engine.isBusy || chatEngine.isBusy
             automationRunner.backend = backendProvider()
+            automationRunner.preferKnownSteps = preferKnownStepsProvider()
             automationRunner.run(automation, on: device, othersBusy: othersBusy)
         }
     }

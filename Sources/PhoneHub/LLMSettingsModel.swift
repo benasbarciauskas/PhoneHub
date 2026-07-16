@@ -35,6 +35,7 @@ final class LLMSettingsModel {
     var selectedBackend: AgentBackend { config.selectedBackend }
     var visionEnabled: Bool { config.vision }
     var screenDescriberMode: ScreenDescriberMode { config.screenDescriberMode }
+    var preferKnownSteps: Bool { config.preferKnownSteps }
 
     func selectBackend(_ backend: AgentBackend) {
         config.selectedBackend = backend
@@ -58,6 +59,11 @@ final class LLMSettingsModel {
 
     func setScreenDescriberMode(_ mode: ScreenDescriberMode) {
         config.screenDescriberMode = mode
+        persistConfig()
+    }
+
+    func setPreferKnownSteps(_ enabled: Bool) {
+        config.preferKnownSteps = enabled
         persistConfig()
     }
 

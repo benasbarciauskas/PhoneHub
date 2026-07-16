@@ -8,6 +8,7 @@ struct AutomationsPanel: View {
     let chatBusy: Bool
     let focused: Device?
     let backend: AgentBackend
+    let preferKnownSteps: Bool
 
     @State private var editing: Automation?
     @State private var showingSheet = false
@@ -90,6 +91,7 @@ struct AutomationsPanel: View {
     private func run(_ automation: Automation) {
         guard let focused else { return }
         runner.backend = backend
+        runner.preferKnownSteps = preferKnownSteps
         runner.run(automation, on: focused, othersBusy: agentEngine.isBusy || chatBusy)
     }
 
@@ -106,7 +108,8 @@ struct AutomationsPanel: View {
         store.update(updated)
         runner.clearResult()
         if let goal = updated.sourceGoal, !agentEngine.isBusy, !chatBusy {
-            agentEngine.runAdhoc(goal: goal, on: focused, backend: backend)
+            agentEngine.runAdhoc(goal: goal, on: focused, backend: backend,
+                                 preferKnownSteps: preferKnownSteps)
             Task {
                 while agentEngine.isBusy {
                     try? await Task.sleep(nanoseconds: 100_000_000)
