@@ -14,11 +14,13 @@ struct CommunityShareItem: Identifiable {
         steps = [.aiStep(id: UUID(), prompt: preset.goal)]
     }
 
-    init(automation: Automation) {
+    init(automation: Automation, resolvedSteps: [AutomationStep]? = nil) {
         id = "automation-\(automation.id.uuidString)"
         name = automation.name
         app = ""
-        steps = automation.steps
+        // Community files have no source concept. Callers resolve bindings first
+        // so a source-backed type step exports the source's current literal value.
+        steps = resolvedSteps ?? automation.steps
     }
 }
 

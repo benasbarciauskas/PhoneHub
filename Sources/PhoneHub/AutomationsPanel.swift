@@ -3,6 +3,7 @@ import PhoneHubCore
 
 struct AutomationsPanel: View {
     @Bindable var store: AutomationStore
+    @Bindable var textSourceStore: TextSourceStore
     var runner: AutomationRunner
     var agentEngine: AutomationEngine
     let chatBusy: Bool
@@ -15,6 +16,7 @@ struct AutomationsPanel: View {
     @State private var editing: Automation?
     @State private var showingSheet = false
     @State private var sharing: CommunityShareItem?
+    @State private var shareError: String?
 
     private var visible: [Automation] {
         guard let focused else { return store.automations }
@@ -72,7 +74,7 @@ struct AutomationsPanel: View {
                         run: { run(automation) },
                         stop: { runner.stop() },
                         edit: { editing = automation; showingSheet = true },
-                        share: { sharing = CommunityShareItem(automation: automation) },
+                        share: { share(automation) },
                         recalibrate: { recalibrate(automation) },
                         duplicate: { store.duplicate(automation) },
                         delete: { store.delete(automation) }
@@ -94,6 +96,14 @@ struct AutomationsPanel: View {
         .sheet(item: $sharing) { item in
             CommunityShareSheet(item: item)
         }
+        .alert("Cannot Share Automation", isPresented: Binding(
+            get: { shareError != nil },
+            set: { if !$0 { shareError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareError ?? "")
+        }
     }
 
     private func create() {
@@ -112,6 +122,15 @@ struct AutomationsPanel: View {
         runner.backend = backend
         runner.preferKnownSteps = preferKnownSteps
         runner.run(automation, on: focused, othersBusy: agentEngine.isBusy || chatBusy)
+    }
+
+    private func share(_ automation: Automation) {
+        do {
+            let steps = try textSourceStore.currentSteps(for: automation)
+            sharing = CommunityShareItem(automation: automation, resolvedSteps: steps)
+        } catch {
+            shareError = error.localizedDescription
+        }
     }
 
     private func isPaused(_ automation: Automation) -> Bool {

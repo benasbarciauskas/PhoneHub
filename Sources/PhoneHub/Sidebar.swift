@@ -5,6 +5,8 @@ struct Sidebar: View {
     @Bindable var store: DeviceStore
     @Bindable var presetStore: PresetStore
     @Bindable var automationStore: AutomationStore
+    @Bindable var textSourceStore: TextSourceStore
+    @Bindable var builderDraftStore: BuilderDraftStore
     @Bindable var historyStore: RunHistoryStore
     @Bindable var scheduleStore: ScheduleStore
     @Bindable var triggerStore: TriggerStore
@@ -139,7 +141,8 @@ struct Sidebar: View {
                 }
             case .automations:
                 ScrollView {
-                    AutomationsPanel(store: automationStore, runner: automationRunner,
+                    AutomationsPanel(store: automationStore, textSourceStore: textSourceStore,
+                                     runner: automationRunner,
                                      agentEngine: engine, chatBusy: chatEngine.isBusy,
                                      focused: store.focusedDevice, backend: agentBackend,
                                      preferKnownSteps: llmSettings.preferKnownSteps,

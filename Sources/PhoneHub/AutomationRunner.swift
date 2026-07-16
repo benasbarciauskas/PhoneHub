@@ -27,6 +27,7 @@ final class AutomationRunner {
     var deviceResolver: (String) -> Device? = { _ in nil }
 
     private let store: AutomationStore
+    private let textSourceStore: TextSourceStore
     private let agentEngine: AutomationEngine
     private var task: Task<Void, Never>?
     private var client: McpDirectClient?
@@ -40,9 +41,11 @@ final class AutomationRunner {
         let startedAt: Date
     }
 
-    init(store: AutomationStore, agentEngine: AutomationEngine) {
+    init(store: AutomationStore, agentEngine: AutomationEngine,
+         textSourceStore: TextSourceStore? = nil) {
         self.store = store
         self.agentEngine = agentEngine
+        self.textSourceStore = textSourceStore ?? TextSourceStore()
     }
 
     var isBusy: Bool {
@@ -104,14 +107,18 @@ final class AutomationRunner {
     private func execute(_ original: Automation, on device: Device, token: UUID) async {
         var automation = original
         var currentDevice = device
-        let initial = makeClient(for: currentDevice.platform)
-        client = initial
         defer {
             stopClient()
             if runToken == token { task = nil; runToken = nil }
         }
 
         do {
+            // Bind each source once at run start. Cycle cursors are committed only
+            // after every iteration succeeds, so failed and cancelled runs consume nothing.
+            let textResolution = try textSourceStore.resolve(automation)
+            automation.steps = textResolution.steps
+            let initial = makeClient(for: currentDevice.platform)
+            client = initial
             try await initial.start()
             let steps = stepsToRun(automation: automation)
             guard !steps.isEmpty else {
@@ -185,6 +192,7 @@ final class AutomationRunner {
                 iteration = next
             }
             if runToken == token {
+                log.append(contentsOf: textSourceStore.commit(textResolution))
                 state = .finished
                 log.append("Finished.")
                 recordHistory(.finished)
