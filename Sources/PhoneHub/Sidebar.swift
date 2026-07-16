@@ -9,10 +9,12 @@ struct Sidebar: View {
     var chatEngine: ChatEngine
     var automationRunner: AutomationRunner
     @Binding var agentBackend: AgentBackend
+    var llmSettings: LLMSettingsModel
 
     @State private var lowerPanel: LowerPanel = .presets
     @State private var renamingDevice: Device?
     @State private var renameText = ""
+    @State private var showingSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -33,6 +35,8 @@ struct Sidebar: View {
                                 Text(backend.rawValue.capitalized).tag(backend)
                             }
                         }
+                        Divider()
+                        Button("LLM Settings…") { showingSettings = true }
                     } label: {
                         Image(systemName: "gearshape")
                     }
@@ -128,6 +132,9 @@ struct Sidebar: View {
             }
         } message: {
             Text("Leave the name empty to use the discovered model name.")
+        }
+        .sheet(isPresented: $showingSettings) {
+            LLMSettingsView(settings: llmSettings)
         }
     }
 }

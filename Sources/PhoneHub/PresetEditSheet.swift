@@ -130,7 +130,7 @@ struct PresetEditSheet: View {
                         Picker("Agent backend", selection: $backend) {
                             Text("App default").tag(nil as AgentBackend?)
                             ForEach(AgentBackend.allCases, id: \.self) { choice in
-                                Text(choice.rawValue.capitalized).tag(Optional(choice))
+                                Text(choice.displayName).tag(Optional(choice))
                             }
                         }
                         .labelsHidden()
