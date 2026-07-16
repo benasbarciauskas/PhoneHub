@@ -114,10 +114,12 @@ final class ChatEngineTests: XCTestCase {
     ) -> ChatEngine {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        return ChatEngine(
+        let engine = ChatEngine(
             store: ChatStore(directory: directory),
             backendAvailability: { _ in backendStatus }
         )
+        engine.commandGate = { _ in nil }
+        return engine
     }
 
     private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
