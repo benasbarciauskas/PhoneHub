@@ -131,13 +131,15 @@ struct Sidebar: View {
                     PresetsPanel(store: presetStore, automationStore: automationStore, engine: engine,
                                  chatBusy: chatEngine.isBusy, automationBusy: automationRunner.isBusy,
                                  focused: store.focusedDevice,
-                                 agentBackend: agentBackend)
+                                 agentBackend: agentBackend,
+                                 preferKnownSteps: llmSettings.preferKnownSteps)
                 }
             case .automations:
                 ScrollView {
                     AutomationsPanel(store: automationStore, runner: automationRunner,
                                      agentEngine: engine, chatBusy: chatEngine.isBusy,
-                                     focused: store.focusedDevice, backend: agentBackend)
+                                     focused: store.focusedDevice, backend: agentBackend,
+                                     preferKnownSteps: llmSettings.preferKnownSteps)
                 }
             case .chat:
                 ChatPanel(engine: chatEngine, presetEngine: engine,

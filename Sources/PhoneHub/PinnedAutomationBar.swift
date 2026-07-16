@@ -7,6 +7,7 @@ struct PinnedAutomationBar: View {
     let focused: Device?
     let othersBusy: Bool
     let backend: AgentBackend
+    let preferKnownSteps: Bool
 
     private var pinned: [Automation] {
         guard let focused else { return [] }
@@ -19,6 +20,7 @@ struct PinnedAutomationBar: View {
                 ForEach(pinned) { automation in
                     Button {
                         runner.backend = backend
+                        runner.preferKnownSteps = preferKnownSteps
                         runner.run(automation, on: focused, othersBusy: othersBusy)
                     } label: {
                         Label(automation.name, systemImage: "bolt.fill")

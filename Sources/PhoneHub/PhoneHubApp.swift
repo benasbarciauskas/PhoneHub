@@ -43,7 +43,8 @@ struct PhoneHubApp: App {
             automationRunner: runner,
             chatEngine: chat,
             historyStore: history,
-            backendProvider: { LLMConfigStore().load().selectedBackend }
+            backendProvider: { LLMConfigStore().load().selectedBackend },
+            preferKnownStepsProvider: { LLMConfigStore().load().preferKnownSteps }
         )
 
         _store = State(initialValue: deviceStore)
@@ -72,7 +73,8 @@ struct PhoneHubApp: App {
                 // docking stay alive; collapse width so PhoneHub is sidebar-only.
                 Stage(store: store, automationStore: automationStore,
                       automationRunner: automationRunner, presetEngine: engine,
-                      chatEngine: chatEngine, agentBackend: agentBackendBinding.wrappedValue)
+                      chatEngine: chatEngine, agentBackend: agentBackendBinding.wrappedValue,
+                      preferKnownSteps: llmSettings.preferKnownSteps)
                     .frame(minWidth: store.layout == .companion ? 0 : 200)
                     .frame(maxWidth: store.layout == .companion ? 0 : .infinity)
                     .opacity(store.layout == .companion ? 0 : 1)

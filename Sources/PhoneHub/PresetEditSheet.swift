@@ -7,6 +7,8 @@ struct PresetEditSheet: View {
     let original: Preset?
     let focusedDevice: Device?
     var engine: AutomationEngine
+    /// App-default preferKnownSteps used when the preset override is nil (preview).
+    let appPreferKnownSteps: Bool
     let onSave: (Preset) -> Void
 
     @State private var name: String
@@ -16,6 +18,7 @@ struct PresetEditSheet: View {
     @State private var android: Bool
     @State private var maxSteps: Int
     @State private var backend: AgentBackend?
+    @State private var preferKnownSteps: Bool?
     @State private var refineError: String?
 
     /// - Parameter prefillGoal: used (when there's no `preset`) to seed the Goal
@@ -24,10 +27,12 @@ struct PresetEditSheet: View {
          prefillGoal: String = "",
          focusedDevice: Device? = nil,
          engine: AutomationEngine,
+         appPreferKnownSteps: Bool = false,
          onSave: @escaping (Preset) -> Void) {
         self.original = preset
         self.focusedDevice = focusedDevice
         self.engine = engine
+        self.appPreferKnownSteps = appPreferKnownSteps
         self.onSave = onSave
         _name = State(initialValue: preset?.name ?? "")
         _goal = State(initialValue: preset?.goal ?? prefillGoal)
@@ -36,6 +41,7 @@ struct PresetEditSheet: View {
         _android = State(initialValue: preset?.platforms.contains(.android) ?? true)
         _maxSteps = State(initialValue: preset?.maxSteps ?? 40)
         _backend = State(initialValue: preset?.backend)
+        _preferKnownSteps = State(initialValue: preset?.preferKnownSteps)
     }
 
     private var canSave: Bool {
@@ -56,7 +62,8 @@ struct PresetEditSheet: View {
                 : app.trimmingCharacters(in: .whitespaces),
             platforms: platforms,
             maxSteps: maxSteps,
-            backend: backend
+            backend: backend,
+            preferKnownSteps: preferKnownSteps
         )
     }
 
@@ -71,7 +78,8 @@ struct PresetEditSheet: View {
     }
 
     private var payloadPreview: String {
-        presetPayloadPreview(preset: editedPreset, device: previewDevice)
+        presetPayloadPreview(preset: editedPreset, device: previewDevice,
+                             preferKnownSteps: appPreferKnownSteps)
     }
 
     var body: some View {
@@ -132,6 +140,14 @@ struct PresetEditSheet: View {
                             ForEach(AgentBackend.allCases, id: \.self) { choice in
                                 Text(choice.displayName).tag(Optional(choice))
                             }
+                        }
+                        .labelsHidden()
+                    }
+                    field("Known steps") {
+                        Picker("Known steps", selection: $preferKnownSteps) {
+                            Text("App default").tag(nil as Bool?)
+                            Text("Prefer").tag(Optional(true))
+                            Text("Don't prefer").tag(Optional(false))
                         }
                         .labelsHidden()
                     }

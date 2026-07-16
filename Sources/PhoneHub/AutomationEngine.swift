@@ -41,10 +41,8 @@ enum RefineError: Error, LocalizedError {
 ///     --allowedTools "mcp__mirroir__*" | "mcp__androir__*" \
 ///     --max-turns <maxSteps> \
 ///     --permission-mode default
-/// Resume (verified flag `-r, --resume`):
-///   claude --resume <sessionId> -p "<reply>" <same flags as above>
-/// (no --dangerously-skip-permissions on this spawn; tools are restricted to the
-///  phone MCP only.)
+/// Resume (verified `-r, --resume`): claude --resume <id> -p "<reply>" <same flags>.
+/// No --dangerously-skip-permissions; tools restricted to the phone MCP only.
 @Observable
 @MainActor
 final class AutomationEngine {
@@ -112,42 +110,41 @@ final class AutomationEngine {
     }
 
     /// Start a saved preset on a device. No-op if a run is already active/paused.
-    func run(preset: Preset, on device: Device, backend: AgentBackend = .claude) {
+    func run(preset: Preset, on device: Device, backend: AgentBackend = .claude,
+             preferKnownSteps: Bool = false) {
         guard !isBusy else { return }
         beginHistory(name: preset.name, device: device)
-        let plan: AutomationPlan
         do {
-            plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
+            let plan = try buildAutomationPlan(
+                preset: preset, device: device, backend: backend,
+                preferKnownSteps: preferKnownSteps)
+            launch(plan: plan, preset: preset, device: device,
+                   header: "Running “\(preset.name)” on \(device.model)…")
         } catch AutomationPlanError.platformMismatch {
             fail("This preset does not support \(device.platform == .ios ? "iOS" : "Android").")
-            return
         } catch {
             fail("Could not prepare the run: \(error)")
-            return
         }
-        launch(plan: plan, preset: preset, device: device,
-               header: "Running “\(preset.name)” on \(device.model)…")
     }
 
     /// Run typed text as a one-off goal on the focused device. The transient
     /// preset is never saved; it goes through the SAME plan/spawn path.
-    func runAdhoc(goal: String, on device: Device, backend: AgentBackend = .claude) {
+    func runAdhoc(goal: String, on device: Device, backend: AgentBackend = .claude,
+                  preferKnownSteps: Bool = false) {
         guard !isBusy else { return }
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let preset = Preset(name: "Command",
-                            goal: trimmed,
-                            platforms: [device.platform])
+        let preset = Preset(name: "Command", goal: trimmed, platforms: [device.platform])
         beginHistory(name: preset.name, device: device)
-        let plan: AutomationPlan
         do {
-            plan = try buildAutomationPlan(preset: preset, device: device, backend: backend)
+            let plan = try buildAutomationPlan(
+                preset: preset, device: device, backend: backend,
+                preferKnownSteps: preferKnownSteps)
+            launch(plan: plan, preset: preset, device: device,
+                   header: "Running command on \(device.model)…")
         } catch {
             fail("Could not prepare the run: \(error)")
-            return
         }
-        launch(plan: plan, preset: preset, device: device,
-               header: "Running command on \(device.model)…")
     }
 
     /// Spawn the selected backend for a prepared plan.
