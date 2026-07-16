@@ -5,6 +5,8 @@ struct Sidebar: View {
     @Bindable var store: DeviceStore
     @Bindable var presetStore: PresetStore
     @Bindable var automationStore: AutomationStore
+    @Bindable var historyStore: RunHistoryStore
+    @Bindable var scheduleStore: ScheduleStore
     var engine: AutomationEngine
     var chatEngine: ChatEngine
     var automationRunner: AutomationRunner
@@ -115,8 +117,9 @@ struct Sidebar: View {
 
             Picker("Panel", selection: $lowerPanel) {
                 Text("Presets").tag(LowerPanel.presets)
-                Text("Automations").tag(LowerPanel.automations)
+                Text("Autos").tag(LowerPanel.automations)
                 Text("Chat").tag(LowerPanel.chat)
+                Text("History").tag(LowerPanel.history)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -140,6 +143,18 @@ struct Sidebar: View {
                 ChatPanel(engine: chatEngine, presetEngine: engine,
                           automationBusy: automationRunner.isBusy,
                           focused: store.focusedDevice, backend: agentBackend)
+            case .history:
+                ScrollView {
+                    HistoryPanel(
+                        historyStore: historyStore,
+                        scheduleStore: scheduleStore,
+                        focused: store.focusedDevice,
+                        displayName: { store.displayName(for: $0) },
+                        presetStore: presetStore,
+                        automationStore: automationStore,
+                        devices: store.devices
+                    )
+                }
             }
         }
         .frame(width: 240)
@@ -288,6 +303,7 @@ private enum LowerPanel: Hashable {
     case presets
     case automations
     case chat
+    case history
 }
 
 private struct DeviceRow: View {
