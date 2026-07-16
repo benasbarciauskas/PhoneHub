@@ -40,6 +40,22 @@ open PhoneHub.app
 
 `build-app.sh` builds the release binary, assembles `PhoneHub.app`, and signs it with a stable self-signed identity so the Accessibility grant survives rebuilds.
 
+## Install from a release
+
+Download the latest `PhoneHub-<version>-macos.zip` from [GitHub Releases](https://github.com/benasbarciauskas/PhoneHub/releases), unzip it, and move `PhoneHub.app` to `/Applications`.
+
+On first launch, right-click `PhoneHub.app` and choose **Open**. The Gatekeeper warning is expected because the app is self-signed rather than signed and notarized with an Apple Developer ID.
+
+Optionally verify the download against the SHA-256 checksum published with the release:
+
+```bash
+shasum -a 256 PhoneHub-<version>-macos.zip
+```
+
+## Releasing
+
+Maintainers run `scripts/release.sh <version>`, then run the `gh release create` command it prints.
+
 Install or update the iOS automation skills mirroir uses (app knowledge, popup and obstacle patterns — improves agent reliability):
 
 ```bash
