@@ -42,8 +42,22 @@ final class AutomationTests: XCTestCase {
         XCTAssertEqual(automation.loop, .once)
         XCTAssertFalse(automation.sharedCoordinates)
         XCTAssertTrue(automation.bindings.isEmpty)
+        XCTAssertTrue(automation.textSourceBindings.isEmpty)
         XCTAssertFalse(automation.pinned)
         XCTAssertNil(automation.rawSteps)
         XCTAssertNil(automation.sourceGoal)
+    }
+
+    func testLegacyAutomationWithoutTextSourceBindingsStillDecodes() throws {
+        let original = Automation(name: "Legacy", platform: .ios, steps: [])
+        let encoded = try JSONEncoder().encode(original)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "textSourceBindings")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(Automation.self, from: legacyData)
+
+        XCTAssertEqual(decoded.name, "Legacy")
+        XCTAssertTrue(decoded.textSourceBindings.isEmpty)
     }
 }

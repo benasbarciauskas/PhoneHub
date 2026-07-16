@@ -5,6 +5,8 @@ struct Sidebar: View {
     @Bindable var store: DeviceStore
     @Bindable var presetStore: PresetStore
     @Bindable var automationStore: AutomationStore
+    @Bindable var textSourceStore: TextSourceStore
+    @Bindable var builderDraftStore: BuilderDraftStore
     @Bindable var historyStore: RunHistoryStore
     @Bindable var scheduleStore: ScheduleStore
     @Bindable var triggerStore: TriggerStore
@@ -131,7 +133,10 @@ struct Sidebar: View {
             switch lowerPanel {
             case .presets:
                 ScrollView {
-                    PresetsPanel(store: presetStore, automationStore: automationStore, engine: engine,
+                    PresetsPanel(store: presetStore, automationStore: automationStore,
+                                 builderDraftStore: builderDraftStore,
+                                 textSourceStore: textSourceStore,
+                                 engine: engine, automationRunner: automationRunner,
                                  chatBusy: chatEngine.isBusy, automationBusy: automationRunner.isBusy,
                                  focused: store.focusedDevice,
                                  agentBackend: agentBackend,
@@ -139,7 +144,8 @@ struct Sidebar: View {
                 }
             case .automations:
                 ScrollView {
-                    AutomationsPanel(store: automationStore, runner: automationRunner,
+                    AutomationsPanel(store: automationStore, textSourceStore: textSourceStore,
+                                     runner: automationRunner,
                                      agentEngine: engine, chatBusy: chatEngine.isBusy,
                                      focused: store.focusedDevice, backend: agentBackend,
                                      preferKnownSteps: llmSettings.preferKnownSteps,

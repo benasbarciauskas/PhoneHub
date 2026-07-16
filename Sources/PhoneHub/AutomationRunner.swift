@@ -27,6 +27,7 @@ final class AutomationRunner {
     var deviceResolver: (String) -> Device? = { _ in nil }
 
     private let store: AutomationStore
+    private let textSourceStore: TextSourceStore
     private let agentEngine: AutomationEngine
     private var task: Task<Void, Never>?
     private var client: McpDirectClient?
@@ -40,9 +41,11 @@ final class AutomationRunner {
         let startedAt: Date
     }
 
-    init(store: AutomationStore, agentEngine: AutomationEngine) {
+    init(store: AutomationStore, agentEngine: AutomationEngine,
+         textSourceStore: TextSourceStore? = nil) {
         self.store = store
         self.agentEngine = agentEngine
+        self.textSourceStore = textSourceStore ?? TextSourceStore()
     }
 
     var isBusy: Bool {
@@ -104,14 +107,18 @@ final class AutomationRunner {
     private func execute(_ original: Automation, on device: Device, token: UUID) async {
         var automation = original
         var currentDevice = device
-        let initial = makeClient(for: currentDevice.platform)
-        client = initial
         defer {
             stopClient()
             if runToken == token { task = nil; runToken = nil }
         }
 
         do {
+            // Bind each source once at run start. Cycle cursors are committed only
+            // after every iteration succeeds, so failed and cancelled runs consume nothing.
+            let textResolution = try textSourceStore.resolve(automation)
+            automation.steps = textResolution.steps
+            let initial = makePhoneMcpClient(for: currentDevice.platform)
+            client = initial
             try await initial.start()
             let steps = stepsToRun(automation: automation)
             guard !steps.isEmpty else {
@@ -150,7 +157,7 @@ final class AutomationRunner {
                     }
 
                     if let label = probeLabel(for: step), !automation.sharedCoordinates {
-                        let arguments = describeArguments(for: currentDevice)
+                        let arguments = directMcpArguments(for: currentDevice)
                         let screen = try await connection.callTool("describe_screen",
                                                                    arguments: arguments,
                                                                    timeoutSeconds: 20)
@@ -185,6 +192,7 @@ final class AutomationRunner {
                 iteration = next
             }
             if runToken == token {
+                log.append(contentsOf: textSourceStore.commit(textResolution))
                 state = .finished
                 log.append("Finished.")
                 recordHistory(.finished)
@@ -199,7 +207,7 @@ final class AutomationRunner {
 
     private func switchTo(_ device: Device) async throws {
         stopClient()
-        let next = makeClient(for: device.platform)
+        let next = makePhoneMcpClient(for: device.platform)
         client = next
         try await next.start()
     }
@@ -236,25 +244,6 @@ final class AutomationRunner {
         case .stopped: throw CancellationError()
         default: throw RunnerError.ai("AI step did not finish.")
         }
-    }
-
-    private func makeClient(for platform: Platform) -> McpDirectClient {
-        let packageArguments: [String]
-        switch platform {
-        case .ios:
-            prepareMirroirConfigForSpawn(serverName: "mirroir")
-            packageArguments = ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
-        case .android:
-            packageArguments = ["-y", "androir-mcp"]
-        }
-        if let npx = resolveTool("npx") {
-            return McpDirectClient(command: npx, arguments: packageArguments)
-        }
-        return McpDirectClient(command: "/usr/bin/env", arguments: ["npx"] + packageArguments)
-    }
-
-    private func describeArguments(for device: Device) -> [String: Any] {
-        device.platform == .android ? ["serial": device.id] : [:]
     }
 
     private func sharedBinding(for step: AutomationStep, in automation: Automation) -> Automation.Binding? {

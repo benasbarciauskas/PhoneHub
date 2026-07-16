@@ -7,6 +7,8 @@ struct PhoneHubApp: App {
     @State private var store: DeviceStore
     @State private var presetStore: PresetStore
     @State private var automationStore: AutomationStore
+    @State private var textSourceStore: TextSourceStore
+    @State private var builderDraftStore: BuilderDraftStore
     @State private var historyStore: RunHistoryStore
     @State private var scheduleStore: ScheduleStore
     @State private var triggerStore: TriggerStore
@@ -29,13 +31,16 @@ struct PhoneHubApp: App {
         let deviceStore = DeviceStore()
         let presets = PresetStore()
         let automations = AutomationStore()
+        let textSources = TextSourceStore()
+        let builderDraft = BuilderDraftStore()
         let history = RunHistoryStore()
         let schedules = ScheduleStore()
         let triggers = TriggerStore()
         let presetEngine = AutomationEngine()
         let chat = ChatEngine()
         presetEngine.runHistoryStore = history
-        let runner = AutomationRunner(store: automations, agentEngine: presetEngine)
+        let runner = AutomationRunner(store: automations, agentEngine: presetEngine,
+                                      textSourceStore: textSources)
         runner.runHistoryStore = history
         runner.deviceResolver = { deviceStore.device(matchingRef: $0) }
         let backendProvider = { LLMConfigStore().load().selectedBackend }
@@ -68,6 +73,8 @@ struct PhoneHubApp: App {
         _store = State(initialValue: deviceStore)
         _presetStore = State(initialValue: presets)
         _automationStore = State(initialValue: automations)
+        _textSourceStore = State(initialValue: textSources)
+        _builderDraftStore = State(initialValue: builderDraft)
         _historyStore = State(initialValue: history)
         _scheduleStore = State(initialValue: schedules)
         _triggerStore = State(initialValue: triggers)
@@ -83,6 +90,7 @@ struct PhoneHubApp: App {
         WindowGroup("PhoneHub") {
             HStack(spacing: 0) {
                 Sidebar(store: store, presetStore: presetStore, automationStore: automationStore,
+                        textSourceStore: textSourceStore, builderDraftStore: builderDraftStore,
                         historyStore: historyStore, scheduleStore: scheduleStore,
                         triggerStore: triggerStore,
                         engine: engine, chatEngine: chatEngine, automationRunner: automationRunner,

@@ -1,12 +1,14 @@
 import SwiftUI
 import PhoneHubCore
 
-/// Presets list + free-form command box + live run view. Shown in the Sidebar
-/// below the device list.
+/// Builder, presets list, and live preset-run view shown below the device list.
 struct PresetsPanel: View {
     @Bindable var store: PresetStore
     @Bindable var automationStore: AutomationStore
+    @Bindable var builderDraftStore: BuilderDraftStore
+    @Bindable var textSourceStore: TextSourceStore
     var engine: AutomationEngine
+    var automationRunner: AutomationRunner
     var chatBusy: Bool
     var automationBusy: Bool
     let focused: Device?
@@ -18,23 +20,11 @@ struct PresetsPanel: View {
     @State private var prefillGoal = ""
     @State private var sharing: CommunityShareItem?
 
-    // Free-form command box.
-    @State private var command = ""
-    @State private var refineError: String?
-
     private var platform: Platform? { focused?.platform }
 
     private var visiblePresets: [Preset] {
         guard let platform else { return store.presets }
         return store.presets(for: platform)
-    }
-
-    private var canRunCommand: Bool {
-        guard let focused, focused.isReady || focused.platform == .ios else { return false }
-        return !engine.isBusy
-            && !chatBusy
-            && !automationBusy
-            && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -51,12 +41,22 @@ struct PresetsPanel: View {
             }
             .padding(.horizontal, Theme.s3)
 
-            if engine.isBusy || engine.runningPreset != nil {
+            if (engine.isBusy || engine.runningPreset != nil) && !engine.isBuilderAction {
                 runView
                     .padding(.horizontal, Theme.s2)
             } else {
-                commandBox
-                    .padding(.horizontal, Theme.s2)
+                BuilderView(
+                    draftStore: builderDraftStore,
+                    textSourceStore: textSourceStore,
+                    automationStore: automationStore,
+                    engine: engine,
+                    runner: automationRunner,
+                    focused: focused,
+                    chatBusy: chatBusy,
+                    backend: agentBackend,
+                    preferKnownSteps: preferKnownSteps
+                )
+                .padding(.horizontal, Theme.s2)
                 listView
             }
 
@@ -81,77 +81,6 @@ struct PresetsPanel: View {
         }
         .sheet(item: $sharing) { item in
             CommunityShareSheet(item: item)
-        }
-    }
-
-    // MARK: - Command box
-
-    private var commandBox: some View {
-        VStack(alignment: .leading, spacing: Theme.s2) {
-            TextField("Type a one-off command…", text: $command, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12))
-            HStack(spacing: Theme.s2) {
-                Button {
-                    if let device = focused {
-                        let goal = command
-                        command = ""
-                        engine.runAdhoc(goal: goal, on: device, backend: agentBackend,
-                                        preferKnownSteps: preferKnownSteps)
-                    }
-                } label: {
-                    Label("Run", systemImage: "play.fill").font(.system(size: 11, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(canRunCommand ? Theme.accent : Theme.subtext.opacity(0.4))
-                .disabled(!canRunCommand)
-
-                Button { refineCommand() } label: {
-                    if engine.isRefining {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Refine", systemImage: "sparkles").font(.system(size: 11))
-                    }
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.subtext)
-                .disabled(engine.isRefining
-                          || command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Spacer()
-
-                Button {
-                    editing = nil
-                    prefillGoal = command
-                    showingSheet = true
-                } label: {
-                    Text("Save as preset").font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.subtext)
-                .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if let refineError {
-                Text(refineError)
-                    .font(.system(size: 10)).foregroundStyle(Theme.err)
-                    .lineLimit(2)
-            }
-        }
-        .padding(Theme.s2)
-        .cardSurface()
-    }
-
-    private func refineCommand() {
-        let text = command
-        refineError = nil
-        Task {
-            do {
-                let rewritten = try await engine.refine(text)
-                command = rewritten
-            } catch {
-                refineError = "Refine failed: \(error.localizedDescription)"
-            }
         }
     }
 

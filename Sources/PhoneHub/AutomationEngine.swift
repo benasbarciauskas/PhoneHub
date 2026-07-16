@@ -53,6 +53,7 @@ final class AutomationEngine {
     private(set) var isRefining = false
     private(set) var isCondensing = false
     private(set) var lastCapture: [CapturedCall] = []
+    private(set) var isBuilderAction = false
 
     /// Optional; when set, every terminal preset run is appended to per-device history.
     var runHistoryStore: RunHistoryStore?
@@ -118,6 +119,7 @@ final class AutomationEngine {
     func run(preset: Preset, on device: Device, backend: AgentBackend = .claude,
              preferKnownSteps: Bool = false) {
         guard !isBusy else { return }
+        isBuilderAction = false
         beginHistory(name: preset.name, device: device)
         do {
             let plan = try buildAutomationPlan(
@@ -139,6 +141,7 @@ final class AutomationEngine {
     func runAdhoc(goal: String, on device: Device, backend: AgentBackend = .claude,
                   preferKnownSteps: Bool = false) {
         guard !isBusy else { return }
+        isBuilderAction = false
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // History shows the actual command, not a generic "Command" title.
@@ -158,15 +161,58 @@ final class AutomationEngine {
         }
     }
 
+    /// Run one builder message through the normal agent plumbing with a prompt
+    /// that permits observation but constrains the agent to one mutating action.
+    func runBuilderAction(
+        goal: String,
+        on device: Device,
+        backend: AgentBackend = .claude,
+        preferKnownSteps: Bool = false
+    ) {
+        guard !isBusy else { return }
+        isBuilderAction = true
+        do {
+            let plan = try buildBuilderActionPlan(
+                goal: goal,
+                device: device,
+                backend: backend,
+                preferKnownSteps: preferKnownSteps,
+                screenCapturePolicy: screenCapturePolicyProvider(),
+                isRunActive: true
+            )
+            let preset = Preset(
+                name: "Builder action",
+                goal: goal.trimmingCharacters(in: .whitespacesAndNewlines),
+                platforms: [device.platform],
+                maxSteps: plan.maxTurns
+            )
+            launch(
+                plan: plan,
+                preset: preset,
+                device: device,
+                header: "Building next action on \(device.model)…",
+                recordsHistory: false
+            )
+        } catch {
+            fail("Could not prepare the builder action: \(error.localizedDescription)")
+        }
+    }
+
     /// Spawn the selected backend for a prepared plan.
-    private func launch(plan: AutomationPlan, preset: Preset, device: Device, header: String) {
+    private func launch(
+        plan: AutomationPlan,
+        preset: Preset,
+        device: Device,
+        header: String,
+        recordsHistory: Bool = true
+    ) {
         let backendStatus = backendAvailability(plan.backend)
         guard case let .available(path: executablePath) = backendStatus else {
             if case let .missing(hint) = backendStatus { fail(hint) }
             return
         }
         // Ensure history is bound even if a caller invoked launch without beginHistory.
-        if historyContext == nil {
+        if recordsHistory, historyContext == nil {
             beginHistory(name: preset.name, device: device)
         }
         currentPlan = plan
@@ -380,6 +426,7 @@ final class AutomationEngine {
         sessionId = nil
         pendingQuestion = nil
         log = []
+        isBuilderAction = false
     }
 
     /// Stop the active or paused run (terminate the process group).

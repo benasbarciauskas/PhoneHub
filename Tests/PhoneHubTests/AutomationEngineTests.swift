@@ -68,6 +68,34 @@ final class AutomationEngineTests: XCTestCase {
         }.count, 1)
     }
 
+    func testBuilderActionUsesConstrainedOriginCapturesToolAndClearsOnDismiss() async throws {
+        let provider = AppSequenceProvider([
+            LLMResponse(
+                text: nil,
+                toolCalls: [LLMToolCall(id: "one", name: "press_home", argumentsJSON: "{}")]
+            ),
+            LLMResponse(text: "Done.", toolCalls: []),
+        ])
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, plan in
+                XCTAssertTrue(plan.systemPreamble.contains("EXACTLY ONE"))
+                return ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
+            }
+        )
+        let device = Device(id: "ios", platform: .ios, model: "iPhone",
+                            osVersion: "18", status: "connected")
+
+        engine.runBuilderAction(goal: "go home", on: device, backend: .openai)
+        XCTAssertTrue(engine.isBuilderAction)
+        try await waitUntil { engine.state == .finished }
+
+        XCTAssertEqual(engine.lastCapture, [CapturedCall(tool: "press_home", rawInput: "{}")])
+        engine.dismissResult()
+        XCTAssertFalse(engine.isBuilderAction)
+        XCTAssertEqual(engine.state, .idle)
+    }
+
     func testTerminalPresetRunAppendsHistoryRecord() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("EngineHistory-\(UUID().uuidString)", isDirectory: true)

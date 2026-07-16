@@ -208,6 +208,50 @@ final class AutomationPlanTests: XCTestCase {
         XCTAssertTrue(plan.systemPreamble.contains("every androir tool call"))
     }
 
+    func testBuilderActionPlanRequiresExactlyOneMutationAfterOptionalObservation() throws {
+        let plan = try buildBuilderActionPlan(
+            goal: "open Instagram",
+            device: iosDevice,
+            backend: .openai,
+            preferKnownSteps: false
+        )
+
+        XCTAssertEqual(plan.backend, .openai)
+        XCTAssertEqual(plan.serverName, "mirroir")
+        XCTAssertEqual(plan.allowedTools, "mcp__mirroir__*")
+        XCTAssertEqual(plan.maxTurns, 4)
+        XCTAssertTrue(plan.prompt.contains("open Instagram"))
+        XCTAssertTrue(plan.systemPreamble.contains("EXACTLY ONE"))
+        XCTAssertTrue(plan.systemPreamble.lowercased().contains("observation"))
+        XCTAssertTrue(plan.systemPreamble.lowercased().contains("stop immediately"))
+        XCTAssertFalse(plan.systemPreamble.contains(preferKnownStepsInstruction))
+    }
+
+    func testBuilderActionPlanCarriesAndroidSerialAndKnownStepPreference() throws {
+        let plan = try buildBuilderActionPlan(
+            goal: "tap Continue",
+            device: androidDevice,
+            backend: .claude,
+            preferKnownSteps: true
+        )
+
+        XCTAssertEqual(plan.serverName, "androir")
+        XCTAssertTrue(plan.prompt.contains("ABC123XYZ"))
+        XCTAssertTrue(plan.prompt.contains("every androir tool call"))
+        XCTAssertTrue(plan.systemPreamble.contains(preferKnownStepsInstruction))
+    }
+
+    func testBuilderActionPlanRejectsBlankGoalAndInvalidSerial() {
+        XCTAssertThrowsError(try buildBuilderActionPlan(goal: "  ", device: iosDevice)) {
+            XCTAssertEqual($0 as? AutomationPlanError, .emptyGoal)
+        }
+        let invalid = Device(id: "bad serial!", platform: .android,
+                             model: "Pixel", osVersion: "15", status: "device")
+        XCTAssertThrowsError(try buildBuilderActionPlan(goal: "tap", device: invalid)) {
+            XCTAssertEqual($0 as? AutomationPlanError, .invalidSerial)
+        }
+    }
+
     func testIOSRoutesToMirroir() throws {
         let preset = Preset(name: "Open IG", goal: "open instagram",
                             platforms: [.ios], maxSteps: 25)

@@ -12,7 +12,7 @@ public struct CapturedCall: Codable, Equatable, Sendable {
 
 public func automationDraft(from calls: [CapturedCall], platform: Platform,
                             name: String, sourceGoal: String?) -> Automation {
-    let actions = calls.compactMap(step(from:))
+    let actions = automationSteps(from: calls)
     var timeline: [AutomationStep] = []
     for (index, action) in actions.enumerated() {
         if index > 0 { timeline.append(.wait(id: UUID(), ms: automationSettleMilliseconds)) }
@@ -20,6 +20,13 @@ public func automationDraft(from calls: [CapturedCall], platform: Platform,
     }
     return Automation(name: name, platform: platform, steps: timeline,
                       rawSteps: timeline, useCondensed: false, sourceGoal: sourceGoal)
+}
+
+/// Maps captured mutating phone calls without adding timeline settle waits.
+/// Observation calls are deliberately excluded so builder turns can require
+/// exactly one resulting action even when the agent inspected the screen first.
+public func automationSteps(from calls: [CapturedCall]) -> [AutomationStep] {
+    calls.compactMap(step(from:))
 }
 
 private func step(from call: CapturedCall) -> AutomationStep? {
