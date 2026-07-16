@@ -178,6 +178,80 @@ final class StageGeometryTests: XCTestCase {
         }
     }
 
+    func testAutoGridPresetPreservesExistingGeometry() {
+        let container = CGRect(x: 10, y: 20, width: 900, height: 600)
+
+        XCTAssertEqual(
+            gridTileRects(count: 12, preset: .auto, within: container, inset: 20, spacing: 10),
+            gridTileRects(count: 12, within: container, inset: 20, spacing: 10)
+        )
+    }
+
+    func testFixedGridPresetsUseTheirDimensionsAndCapacities() {
+        let container = CGRect(x: 0, y: 0, width: 920, height: 620)
+
+        assertPreset(.twoByTwo, count: 9, expectedCount: 4,
+                     expectedColumns: 2, expectedRows: 2, container: container)
+        assertPreset(.threeByTwo, count: 9, expectedCount: 6,
+                     expectedColumns: 3, expectedRows: 2, container: container)
+        assertPreset(.row, count: 12, expectedCount: 9,
+                     expectedColumns: 9, expectedRows: 1, container: container)
+    }
+
+    func testFixedGridPresetTilesRespectInsetSpacingAndDoNotOverlap() {
+        let container = CGRect(x: 30, y: 40, width: 920, height: 620)
+
+        for preset in [WallGridPreset.twoByTwo, .threeByTwo, .row] {
+            let rects = gridTileRects(count: 20, preset: preset,
+                                      within: container, inset: 20, spacing: 10)
+            let insetContainer = container.insetBy(dx: 20, dy: 20)
+
+            for rect in rects {
+                XCTAssertGreaterThanOrEqual(rect.minX, insetContainer.minX - 0.0001)
+                XCTAssertGreaterThanOrEqual(rect.minY, insetContainer.minY - 0.0001)
+                XCTAssertLessThanOrEqual(rect.maxX, insetContainer.maxX + 0.0001)
+                XCTAssertLessThanOrEqual(rect.maxY, insetContainer.maxY + 0.0001)
+            }
+            for left in rects.indices {
+                for right in rects.indices where right > left {
+                    XCTAssertFalse(rects[left].intersects(rects[right]))
+                }
+            }
+        }
+    }
+
+    func testSwapSlotsExchangesOnlyRequestedDeviceSlots() {
+        let order = ["pixel": 0, "iphone": 1, "tablet": 2]
+
+        XCTAssertEqual(swapSlots(order: order, from: "pixel", to: "tablet"),
+                       ["pixel": 2, "iphone": 1, "tablet": 0])
+    }
+
+    func testSwapSlotsLeavesOrderUnchangedWhenEitherDeviceIsMissing() {
+        let order = ["pixel": 0, "iphone": 1]
+
+        XCTAssertEqual(swapSlots(order: order, from: "pixel", to: "missing"), order)
+        XCTAssertEqual(swapSlots(order: order, from: "missing", to: "iphone"), order)
+    }
+
+    func testZoomedTileRectClampsScaleAndStaysCenteredWithinTile() {
+        let tile = CGRect(x: 100, y: 200, width: 300, height: 600)
+
+        let oversized = zoomedTileRect(in: tile, scale: 2)
+        XCTAssertEqual(oversized, tile)
+
+        let undersized = zoomedTileRect(in: tile, scale: 0)
+        XCTAssertEqual(undersized.width, 105, accuracy: 0.0001)
+        XCTAssertEqual(undersized.height, 210, accuracy: 0.0001)
+        XCTAssertEqual(undersized.midX, tile.midX, accuracy: 0.0001)
+        XCTAssertEqual(undersized.midY, tile.midY, accuracy: 0.0001)
+
+        let half = zoomedTileRect(in: tile, scale: 0.5)
+        XCTAssertEqual(half.width, 150, accuracy: 0.0001)
+        XCTAssertEqual(half.height, 300, accuracy: 0.0001)
+        XCTAssertTrue(tile.contains(half))
+    }
+
     private func assertGridTileRects(count: Int,
                                      file: StaticString = #filePath,
                                      line: UInt = #line) {
@@ -219,6 +293,26 @@ final class StageGeometryTests: XCTestCase {
                                             line: line)
             }
         }
+    }
+
+    private func assertPreset(_ preset: WallGridPreset,
+                              count: Int,
+                              expectedCount: Int,
+                              expectedColumns: Int,
+                              expectedRows: Int,
+                              container: CGRect,
+                              file: StaticString = #filePath,
+                              line: UInt = #line) {
+        let spacing: CGFloat = 10
+        let inset: CGFloat = 20
+        let rects = gridTileRects(count: count, preset: preset,
+                                  within: container, inset: inset, spacing: spacing)
+        XCTAssertEqual(rects.count, expectedCount, file: file, line: line)
+
+        let uniqueX = Set(rects.map { $0.minX.rounded() })
+        let uniqueY = Set(rects.map { $0.minY.rounded() })
+        XCTAssertEqual(uniqueX.count, expectedColumns, file: file, line: line)
+        XCTAssertEqual(uniqueY.count, expectedRows, file: file, line: line)
     }
 
     private func XCTAssertCentered(_ rect: CGRect,
