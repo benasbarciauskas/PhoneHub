@@ -146,6 +146,67 @@ final class ApiAgentRuntimeTests: XCTestCase {
         ])
     }
 
+    func testVisionOnAttachesScreenshotImageToProviderMessages() async throws {
+        let provider = CapturingProvider([
+            LLMResponse(text: "Looks like Settings.", toolCalls: [])
+        ])
+        let client = MapMCPClient(results: [
+            "screenshot": McpToolResult(
+                text: "", isError: false,
+                imageBase64: Self.tinyPNGBase64, imageMediaType: "image/png"
+            ),
+            "describe_screen": McpToolResult(
+                text: #"- "Settings" button at (209, 100)"#, isError: false
+            )
+        ])
+        let events = EventRecorder()
+        let runtime = ApiAgentRuntime(provider: provider, client: client, vision: true)
+
+        let result = await runtime.run(
+            systemPreamble: "system", prompt: "open wifi", priorMessages: [],
+            maxToolCalls: 2, serverName: "mirroir", onEvent: { events.append($0) }
+        )
+
+        XCTAssertEqual(result.outcome, .completed("Looks like Settings."))
+        let sent = await provider.firstMessages()
+        let visionMessage = try XCTUnwrap(sent.last)
+        XCTAssertEqual(visionMessage.role, .user)
+        XCTAssertEqual(visionMessage.image?.base64, Self.tinyPNGBase64)
+        XCTAssertEqual(visionMessage.image?.mediaType, "image/png")
+        XCTAssertTrue(visionMessage.content?.contains("[1] Settings") == true)
+        // Vision frames are ephemeral — not in returned transcript.
+        XCTAssertTrue(result.messages.allSatisfy { $0.image == nil })
+        XCTAssertEqual(client.calls.map(\.name), ["screenshot", "describe_screen"])
+        XCTAssertTrue(events.values.contains(.toolUse(
+            name: "screenshot", summary: "vision capture", rawInput: "{}"
+        )))
+        XCTAssertTrue(events.values.contains(.toolResult("[image captured]")))
+        // Never log base64 image bytes.
+        XCTAssertFalse(String(describing: events.values).contains(Self.tinyPNGBase64))
+    }
+
+    func testVisionOffDoesNotCallScreenshotOrAttachImage() async {
+        let provider = CapturingProvider([
+            LLMResponse(text: "Done.", toolCalls: [])
+        ])
+        let client = MapMCPClient(results: [:])
+        let runtime = ApiAgentRuntime(provider: provider, client: client, vision: false)
+
+        let result = await runtime.run(
+            systemPreamble: "system", prompt: "goal", priorMessages: [],
+            maxToolCalls: 2, serverName: "mirroir", onEvent: { _ in }
+        )
+
+        XCTAssertEqual(result.outcome, .completed("Done."))
+        XCTAssertTrue(client.calls.isEmpty)
+        let sent = await provider.firstMessages()
+        XCTAssertTrue(sent.allSatisfy { $0.image == nil })
+    }
+
+    /// 1×1 PNG fixture — tests only.
+    private static let tinyPNGBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
     private func json(_ string: String) throws -> [String: Any] {
         let data = try XCTUnwrap(string.data(using: .utf8))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -175,6 +236,21 @@ private actor SequenceProvider: LLMProvider {
     }
 }
 
+private actor CapturingProvider: LLMProvider {
+    private var responses: [LLMResponse]
+    private var received: [[LLMMessage]] = []
+
+    init(_ responses: [LLMResponse]) { self.responses = responses }
+
+    func send(messages: [LLMMessage], tools: [LLMToolDefinition]) async throws -> LLMResponse {
+        received.append(messages)
+        guard !responses.isEmpty else { throw LLMProviderError.invalidResponse }
+        return responses.removeFirst()
+    }
+
+    func firstMessages() -> [LLMMessage] { received.first ?? [] }
+}
+
 private final class RecordingMCPClient: McpToolClient, @unchecked Sendable {
     struct Call { let name: String; let arguments: [String: Any] }
     private(set) var started = false
@@ -188,6 +264,23 @@ private final class RecordingMCPClient: McpToolClient, @unchecked Sendable {
                   timeoutSeconds: Double) async throws -> McpToolResult {
         calls.append(Call(name: name, arguments: arguments))
         return result
+    }
+    func stop() { stopped = true }
+}
+
+private final class MapMCPClient: McpToolClient, @unchecked Sendable {
+    struct Call { let name: String; let arguments: [String: Any] }
+    private(set) var started = false
+    private(set) var stopped = false
+    private(set) var calls: [Call] = []
+    private let results: [String: McpToolResult]
+
+    init(results: [String: McpToolResult]) { self.results = results }
+    func start() async throws { started = true }
+    func callTool(_ name: String, arguments: [String: Any],
+                  timeoutSeconds: Double) async throws -> McpToolResult {
+        calls.append(Call(name: name, arguments: arguments))
+        return results[name] ?? McpToolResult(text: "", isError: false)
     }
     func stop() { stopped = true }
 }
