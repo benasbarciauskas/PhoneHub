@@ -134,6 +134,9 @@ final class ChatEngine {
     }
 
     private func start(plan: AutomationPlan, asResume: Bool) {
+        // iOS: write mirroir screenDescriberMode into ~/.mirroir-mcp/config.json before spawn.
+        prepareMirroirConfigForSpawn(serverName: plan.serverName)
+
         if plan.backend.isAPI {
             startAPI(plan: plan)
             return

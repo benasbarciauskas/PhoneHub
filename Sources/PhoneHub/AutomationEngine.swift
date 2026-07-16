@@ -173,6 +173,9 @@ final class AutomationEngine {
         currentAction = "Starting…"
         log = [header]
 
+        // iOS: write mirroir screenDescriberMode into ~/.mirroir-mcp/config.json before spawn.
+        prepareMirroirConfigForSpawn(serverName: plan.serverName)
+
         if plan.backend.isAPI {
             startAPI(plan: plan, prompt: plan.prompt, priorMessages: [])
             return
@@ -188,6 +191,7 @@ final class AutomationEngine {
               let plan = currentPlan else { return }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { return }
+        prepareMirroirConfigForSpawn(serverName: plan.serverName)
         if plan.backend.isAPI {
             guard case .available = backendAvailability(plan.backend) else {
                 if case let .missing(hint) = backendAvailability(plan.backend) { fail(hint) }

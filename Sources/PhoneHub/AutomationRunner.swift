@@ -196,8 +196,11 @@ final class AutomationRunner {
     private func makeClient(for platform: Platform) -> McpDirectClient {
         let packageArguments: [String]
         switch platform {
-        case .ios: packageArguments = ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
-        case .android: packageArguments = ["-y", "androir-mcp"]
+        case .ios:
+            prepareMirroirConfigForSpawn(serverName: "mirroir")
+            packageArguments = ["-y", "mirroir-mcp", "--dangerously-skip-permissions"]
+        case .android:
+            packageArguments = ["-y", "androir-mcp"]
         }
         if let npx = resolveTool("npx") {
             return McpDirectClient(command: npx, arguments: packageArguments)

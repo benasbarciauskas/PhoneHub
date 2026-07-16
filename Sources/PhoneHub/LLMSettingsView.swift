@@ -64,6 +64,28 @@ struct LLMSettingsView: View {
                     .foregroundStyle(Theme.subtext)
             }
 
+            Divider()
+
+            field("iOS screen describer") {
+                Picker("Screen describer", selection: screenDescriberBinding) {
+                    ForEach(ScreenDescriberMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.s1) {
+                Text(SkillsStatus.mirroirSkillsInstalled()
+                     ? "iOS skills: installed ✓"
+                     : "iOS skills: not installed — run scripts/setup-skills.sh")
+                Text(DetectionStatus.elementDetectionLine())
+                Text(DetectionStatus.visionDescriberHint)
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(Theme.subtext)
+
             if let message = settings.statusMessage {
                 Text(message).font(.caption).foregroundStyle(Theme.err)
             }
@@ -94,6 +116,13 @@ struct LLMSettingsView: View {
         Binding(
             get: { settings.visionEnabled },
             set: { settings.setVision($0) }
+        )
+    }
+
+    private var screenDescriberBinding: Binding<ScreenDescriberMode> {
+        Binding(
+            get: { settings.screenDescriberMode },
+            set: { settings.setScreenDescriberMode($0) }
         )
     }
 

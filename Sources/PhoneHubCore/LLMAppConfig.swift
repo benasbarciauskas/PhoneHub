@@ -10,7 +10,8 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     public static let `default` = LLMAppConfig(
         selectedBackend: .claude,
         models: defaultModels,
-        vision: false
+        vision: false,
+        screenDescriberMode: .auto
     )
 
     public var selectedBackend: AgentBackend
@@ -18,12 +19,16 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     /// When true, API backends attach phone screenshots each decision step.
     /// Ignored for claude/codex CLIs (they handle vision via MCP themselves).
     public var vision: Bool
+    /// mirroir-mcp screen describer mode (iOS only). Default Auto matches today.
+    public var screenDescriberMode: ScreenDescriberMode
 
     public init(selectedBackend: AgentBackend, models: [String: String],
-                vision: Bool = false) {
+                vision: Bool = false,
+                screenDescriberMode: ScreenDescriberMode = .auto) {
         self.selectedBackend = selectedBackend
         self.models = models
         self.vision = vision
+        self.screenDescriberMode = screenDescriberMode
     }
 
     public func model(forProvider provider: String) -> String {
@@ -36,7 +41,7 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case selectedBackend, models, vision
+        case selectedBackend, models, vision, screenDescriberMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +49,9 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
         selectedBackend = try container.decode(AgentBackend.self, forKey: .selectedBackend)
         models = try container.decode([String: String].self, forKey: .models)
         vision = try container.decodeIfPresent(Bool.self, forKey: .vision) ?? false
+        screenDescriberMode = try container.decodeIfPresent(
+            ScreenDescriberMode.self, forKey: .screenDescriberMode
+        ) ?? .auto
     }
 }
 

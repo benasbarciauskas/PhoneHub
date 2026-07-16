@@ -77,6 +77,24 @@ final class LLMSettingsModelTests: XCTestCase {
         XCTAssertTrue(store.load().vision)
     }
 
+    func testScreenDescriberModePersistsInConfig() throws {
+        let suite = "LLMSettingsModelTests.describer.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LLMConfigStore(defaults: defaults)
+        let model = LLMSettingsModel(
+            configStore: store,
+            keyLookup: { _ in nil },
+            keySetter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+
+        XCTAssertEqual(model.screenDescriberMode, .auto)
+        model.setScreenDescriberMode(.vision)
+        XCTAssertEqual(model.screenDescriberMode, .vision)
+        XCTAssertEqual(store.load().screenDescriberMode, .vision)
+    }
+
     private func ephemeralDefaults() -> UserDefaults {
         UserDefaults(suiteName: "LLMSettingsModelTests.\(UUID().uuidString)")!
     }
