@@ -3,10 +3,16 @@ import Foundation
 public struct McpToolResult: Equatable, Sendable {
     public let text: String
     public let isError: Bool
+    /// Optional image payload from MCP `image` content blocks (never log this).
+    public let imageBase64: String?
+    public let imageMediaType: String?
 
-    public init(text: String, isError: Bool) {
+    public init(text: String, isError: Bool,
+                imageBase64: String? = nil, imageMediaType: String? = nil) {
         self.text = text
         self.isError = isError
+        self.imageBase64 = imageBase64
+        self.imageMediaType = imageMediaType
     }
 }
 
@@ -107,7 +113,32 @@ public final class McpDirectClient: @unchecked Sendable {
             throw McpDirectClientError.invalidResponse
         }
         let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
-        return McpToolResult(text: text, isError: result["isError"] as? Bool ?? false)
+        let image = content.compactMap(Self.imagePayload(from:)).first
+        return McpToolResult(
+            text: text,
+            isError: result["isError"] as? Bool ?? false,
+            imageBase64: image?.base64,
+            imageMediaType: image?.mediaType
+        )
+    }
+
+    /// MCP image block: `{type:"image", data, mimeType}` or nested `source`.
+    private static func imagePayload(from block: [String: Any]) -> (base64: String, mediaType: String)? {
+        guard (block["type"] as? String) == "image" else { return nil }
+        if let data = block["data"] as? String, !data.isEmpty {
+            let media = (block["mimeType"] as? String)
+                ?? (block["media_type"] as? String)
+                ?? "image/png"
+            return (data, media)
+        }
+        if let source = block["source"] as? [String: Any],
+           let data = source["data"] as? String, !data.isEmpty {
+            let media = (source["media_type"] as? String)
+                ?? (source["mimeType"] as? String)
+                ?? "image/png"
+            return (data, media)
+        }
+        return nil
     }
 
     private static func encodeNotification(method: String, params: [String: Any]) throws -> Data {

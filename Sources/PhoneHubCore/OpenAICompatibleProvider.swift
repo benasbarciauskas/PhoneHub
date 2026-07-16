@@ -11,7 +11,7 @@ public enum OpenAIWire {
                 object["tool_call_id"] = message.toolCallID ?? ""
                 return object
             }
-            object["content"] = message.content ?? NSNull()
+            object["content"] = Self.contentValue(for: message)
             if !message.toolCalls.isEmpty {
                 object["tool_calls"] = message.toolCalls.map { call in
                     [
@@ -39,6 +39,22 @@ public enum OpenAIWire {
         ]
         if !wireTools.isEmpty { root["tools"] = wireTools }
         return try LLMWireJSON.data(root)
+    }
+
+    /// TEXT-only stays a string; with an image, content becomes multimodal parts.
+    static func contentValue(for message: LLMMessage) -> Any {
+        guard let image = message.image else {
+            return message.content ?? NSNull()
+        }
+        var parts: [[String: Any]] = []
+        if let text = message.content, !text.isEmpty {
+            parts.append(["type": "text", "text": text])
+        }
+        parts.append([
+            "type": "image_url",
+            "image_url": ["url": image.dataURL]
+        ])
+        return parts
     }
 
     public static func parseResponse(_ data: Data) throws -> LLMResponse {

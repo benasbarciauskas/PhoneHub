@@ -23,7 +23,7 @@ public enum AnthropicWire {
                     ]]
                 ]
             case .user:
-                return ["role": "user", "content": message.content ?? ""]
+                return ["role": "user", "content": Self.userContent(for: message)]
             case .assistant:
                 guard !message.toolCalls.isEmpty else {
                     return ["role": "assistant", "content": message.content ?? ""]
@@ -58,6 +58,26 @@ public enum AnthropicWire {
         if !system.isEmpty { root["system"] = system }
         if !wireTools.isEmpty { root["tools"] = wireTools }
         return try LLMWireJSON.data(root)
+    }
+
+    /// TEXT-only stays a string; with an image, content becomes multimodal blocks.
+    static func userContent(for message: LLMMessage) -> Any {
+        guard let image = message.image else {
+            return message.content ?? ""
+        }
+        var blocks: [[String: Any]] = []
+        if let text = message.content, !text.isEmpty {
+            blocks.append(["type": "text", "text": text])
+        }
+        blocks.append([
+            "type": "image",
+            "source": [
+                "type": "base64",
+                "media_type": image.mediaType,
+                "data": image.base64
+            ] as [String: Any]
+        ])
+        return blocks
     }
 
     public static func parseResponse(_ data: Data) throws -> LLMResponse {

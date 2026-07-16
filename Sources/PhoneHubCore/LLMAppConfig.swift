@@ -9,15 +9,21 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
 
     public static let `default` = LLMAppConfig(
         selectedBackend: .claude,
-        models: defaultModels
+        models: defaultModels,
+        vision: false
     )
 
     public var selectedBackend: AgentBackend
     public private(set) var models: [String: String]
+    /// When true, API backends attach phone screenshots each decision step.
+    /// Ignored for claude/codex CLIs (they handle vision via MCP themselves).
+    public var vision: Bool
 
-    public init(selectedBackend: AgentBackend, models: [String: String]) {
+    public init(selectedBackend: AgentBackend, models: [String: String],
+                vision: Bool = false) {
         self.selectedBackend = selectedBackend
         self.models = models
+        self.vision = vision
     }
 
     public func model(forProvider provider: String) -> String {
@@ -27,6 +33,17 @@ public struct LLMAppConfig: Codable, Equatable, Sendable {
 
     public mutating func setModel(_ model: String, forProvider provider: String) {
         models[provider] = model
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case selectedBackend, models, vision
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        selectedBackend = try container.decode(AgentBackend.self, forKey: .selectedBackend)
+        models = try container.decode([String: String].self, forKey: .models)
+        vision = try container.decodeIfPresent(Bool.self, forKey: .vision) ?? false
     }
 }
 

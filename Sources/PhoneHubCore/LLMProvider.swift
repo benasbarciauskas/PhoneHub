@@ -19,23 +19,39 @@ public struct LLMToolCall: Equatable, Sendable {
     }
 }
 
+/// Optional image attachment for multimodal (vision) user messages.
+public struct LLMImageContent: Equatable, Sendable {
+    public let mediaType: String
+    public let base64: String
+
+    public init(mediaType: String = "image/png", base64: String) {
+        self.mediaType = mediaType
+        self.base64 = base64
+    }
+
+    public var dataURL: String { "data:\(mediaType);base64,\(base64)" }
+}
+
 public struct LLMMessage: Equatable, Sendable {
     public let role: LLMRole
     public let content: String?
     public let toolCallID: String?
     public let toolCalls: [LLMToolCall]
     public let isError: Bool
+    public let image: LLMImageContent?
 
     public init(role: LLMRole,
                 content: String?,
                 toolCallID: String? = nil,
                 toolCalls: [LLMToolCall] = [],
-                isError: Bool = false) {
+                isError: Bool = false,
+                image: LLMImageContent? = nil) {
         self.role = role
         self.content = content
         self.toolCallID = toolCallID
         self.toolCalls = toolCalls
         self.isError = isError
+        self.image = image
     }
 }
 

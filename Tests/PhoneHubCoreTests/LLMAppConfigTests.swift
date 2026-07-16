@@ -6,6 +6,7 @@ final class LLMAppConfigTests: XCTestCase {
         let config = LLMAppConfig.default
 
         XCTAssertEqual(config.selectedBackend, .claude)
+        XCTAssertFalse(config.vision)
         XCTAssertEqual(config.model(forProvider: "openrouter"), "anthropic/claude-3.5-sonnet")
         XCTAssertEqual(config.model(forProvider: "openai"), "gpt-4.1")
         XCTAssertEqual(config.model(forProvider: "anthropic"), "claude-sonnet-4-20250514")
@@ -15,12 +16,20 @@ final class LLMAppConfigTests: XCTestCase {
         var config = LLMAppConfig.default
         config.selectedBackend = .codex
         config.setModel("custom/model", forProvider: "openrouter")
+        config.vision = true
 
         let data = try JSONEncoder().encode(config)
         let json = String(decoding: data, as: UTF8.self).lowercased()
         XCTAssertFalse(json.contains("key"))
         XCTAssertFalse(json.contains("secret"))
         XCTAssertEqual(try JSONDecoder().decode(LLMAppConfig.self, from: data), config)
+    }
+
+    func testLegacyConfigWithoutVisionDecodesAsFalse() throws {
+        let legacy = Data(#"{"selectedBackend":"openai","models":{"openai":"gpt-4.1"}}"#.utf8)
+        let config = try JSONDecoder().decode(LLMAppConfig.self, from: legacy)
+        XCTAssertEqual(config.selectedBackend, .openai)
+        XCTAssertFalse(config.vision)
     }
 
     func testStoreMigratesLegacyBackendOnlyWhenNewConfigIsAbsent() throws {

@@ -133,6 +133,59 @@ final class LLMProviderTests: XCTestCase {
         XCTAssertThrowsError(try AnthropicWire.parseResponse(Data(#"{"content":"bad"}"#.utf8)))
     }
 
+    func testOpenAIRequestEncodesImageAsDataURLContentPart() throws {
+        let image = LLMImageContent(mediaType: "image/png", base64: Self.tinyPNGBase64)
+        let message = LLMMessage(role: .user, content: "What is on screen?", image: image)
+        let root = try json(OpenAIWire.buildRequest(model: "gpt-test", messages: [message], tools: []))
+        let wireMessages = try XCTUnwrap(root["messages"] as? [[String: Any]])
+        let parts = try XCTUnwrap(wireMessages[0]["content"] as? [[String: Any]])
+        XCTAssertEqual(parts.count, 2)
+        XCTAssertEqual(parts[0]["type"] as? String, "text")
+        XCTAssertEqual(parts[0]["text"] as? String, "What is on screen?")
+        XCTAssertEqual(parts[1]["type"] as? String, "image_url")
+        let imageURL = try XCTUnwrap(parts[1]["image_url"] as? [String: Any])
+        XCTAssertEqual(
+            imageURL["url"] as? String,
+            "data:image/png;base64,\(Self.tinyPNGBase64)"
+        )
+    }
+
+    func testAnthropicRequestEncodesImageAsBase64SourceBlock() throws {
+        let image = LLMImageContent(mediaType: "image/png", base64: Self.tinyPNGBase64)
+        let message = LLMMessage(role: .user, content: "What is on screen?", image: image)
+        let root = try json(AnthropicWire.buildRequest(
+            model: "claude-test", messages: [message], tools: []
+        ))
+        let wireMessages = try XCTUnwrap(root["messages"] as? [[String: Any]])
+        let blocks = try XCTUnwrap(wireMessages[0]["content"] as? [[String: Any]])
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0]["type"] as? String, "text")
+        XCTAssertEqual(blocks[0]["text"] as? String, "What is on screen?")
+        XCTAssertEqual(blocks[1]["type"] as? String, "image")
+        let source = try XCTUnwrap(blocks[1]["source"] as? [String: Any])
+        XCTAssertEqual(source["type"] as? String, "base64")
+        XCTAssertEqual(source["media_type"] as? String, "image/png")
+        XCTAssertEqual(source["data"] as? String, Self.tinyPNGBase64)
+    }
+
+    func testTextOnlyUserContentUnchangedWithoutImage() throws {
+        let message = LLMMessage(role: .user, content: "plain")
+        let openAI = try json(OpenAIWire.buildRequest(
+            model: "gpt-test", messages: [message], tools: []
+        ))
+        let anthropic = try json(AnthropicWire.buildRequest(
+            model: "claude-test", messages: [message], tools: []
+        ))
+        let openAIMessages = try XCTUnwrap(openAI["messages"] as? [[String: Any]])
+        let anthropicMessages = try XCTUnwrap(anthropic["messages"] as? [[String: Any]])
+        XCTAssertEqual(openAIMessages[0]["content"] as? String, "plain")
+        XCTAssertEqual(anthropicMessages[0]["content"] as? String, "plain")
+    }
+
+    /// 1×1 PNG — fixture only; never log production screenshot bytes.
+    private static let tinyPNGBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
     private func json(_ data: Data) throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }

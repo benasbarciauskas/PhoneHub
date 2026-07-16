@@ -39,6 +39,21 @@ final class McpDirectClientTests: XCTestCase {
                        McpToolResult(text: "not connected", isError: true))
     }
 
+    func testExtractToolResultPullsImageContentBlocks() throws {
+        let json: [String: Any] = ["result": [
+            "content": [
+                ["type": "text", "text": "ok"],
+                ["type": "image", "mimeType": "image/png", "data": "abc123"]
+            ],
+            "isError": false
+        ]]
+        let result = try McpDirectClient.extractToolResult(json: json)
+        XCTAssertEqual(result.text, "ok")
+        XCTAssertEqual(result.imageBase64, "abc123")
+        XCTAssertEqual(result.imageMediaType, "image/png")
+        XCTAssertFalse(result.isError)
+    }
+
     func testLiveMirroirStatusWhenEnabled() async throws {
         guard ProcessInfo.processInfo.environment["PHONEHUB_LIVE_MCP"] == "1" else {
             throw XCTSkip("Set PHONEHUB_LIVE_MCP=1 to run")

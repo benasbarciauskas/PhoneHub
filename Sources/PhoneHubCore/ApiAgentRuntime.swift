@@ -61,17 +61,23 @@ public final class ApiAgentRuntime: @unchecked Sendable {
     private let provider: any LLMProvider
     private let client: any McpToolClient
     private let sensitiveValues: [String]
+    /// When true, each decision step captures a screenshot (+ Set-of-Mark list)
+    /// and attaches them multimodally to the provider request.
+    private let vision: Bool
 
     public init(provider: any LLMProvider, client: any McpToolClient,
-                sensitiveValues: [String] = []) {
+                sensitiveValues: [String] = [],
+                vision: Bool = false) {
         self.provider = provider
         self.client = client
         self.sensitiveValues = sensitiveValues.filter { !$0.isEmpty }
+        self.vision = vision
     }
 
     public static func live(provider: any LLMProvider,
                             plan: AutomationPlan,
-                            sensitiveValues: [String] = []) throws -> ApiAgentRuntime {
+                            sensitiveValues: [String] = [],
+                            vision: Bool = false) throws -> ApiAgentRuntime {
         let configuration = try mcpLaunchConfiguration(plan: plan)
         let executable: String
         let arguments: [String]
@@ -88,7 +94,8 @@ public final class ApiAgentRuntime: @unchecked Sendable {
         return ApiAgentRuntime(
             provider: provider,
             client: McpDirectClient(command: executable, arguments: arguments),
-            sensitiveValues: sensitiveValues
+            sensitiveValues: sensitiveValues,
+            vision: vision
         )
     }
 
@@ -125,9 +132,16 @@ public final class ApiAgentRuntime: @unchecked Sendable {
         do {
             while true {
                 try Task.checkCancellation()
+                var sendMessages = messages
+                if vision {
+                    // Ephemeral frame for this decision — not stored in transcript.
+                    if let frame = await captureVisionFrame(onEvent: onEvent) {
+                        sendMessages.append(frame)
+                    }
+                }
                 let response: LLMResponse
                 do {
-                    response = try await provider.send(messages: messages, tools: tools)
+                    response = try await provider.send(messages: sendMessages, tools: tools)
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch let error as LLMProviderError {
@@ -205,6 +219,42 @@ public final class ApiAgentRuntime: @unchecked Sendable {
             throw ApiAgentRuntimeError.invalidToolArguments
         }
         return arguments
+    }
+
+    /// Capture screenshot + describe_screen; attach image + element list text.
+    private func captureVisionFrame(
+        onEvent: @escaping @Sendable (StreamEvent) async -> Void
+    ) async -> LLMMessage? {
+        await onEvent(.toolUse(name: "screenshot", summary: "vision capture", rawInput: "{}"))
+        let shot: McpToolResult
+        do {
+            shot = try await client.callTool("screenshot", arguments: [:], timeoutSeconds: 30)
+        } catch {
+            await onEvent(.toolResult(redact(error.localizedDescription)))
+            return nil
+        }
+        await onEvent(.toolResult(VisionCapture.screenshotLogSummary(for: shot)))
+
+        await onEvent(.toolUse(name: "describe_screen", summary: "set-of-mark", rawInput: "{}"))
+        let describe: McpToolResult
+        do {
+            describe = try await client.callTool("describe_screen", arguments: [:],
+                                                 timeoutSeconds: 30)
+        } catch {
+            await onEvent(.toolResult(redact(error.localizedDescription)))
+            let image = VisionCapture.imageContent(from: shot)
+            guard image != nil || !(shot.text.isEmpty && shot.imageBase64 == nil) else {
+                return nil
+            }
+            return VisionCapture.userMessage(image: image, describeText: "")
+        }
+        await onEvent(.toolResult(describe.text))
+
+        let image = VisionCapture.imageContent(from: shot)
+        if image == nil && describe.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return nil
+        }
+        return VisionCapture.userMessage(image: image, describeText: describe.text)
     }
 
     private func fail(_ message: String,

@@ -43,7 +43,12 @@ public func makeConfiguredAPIRuntime(backend: AgentBackend,
         apiKey: key,
         model: config.model(forProvider: backend.rawValue)
     )
-    return try ApiAgentRuntime.live(provider: provider, plan: plan, sensitiveValues: [key])
+    return try ApiAgentRuntime.live(
+        provider: provider,
+        plan: plan,
+        sensitiveValues: [key],
+        vision: config.vision
+    )
 }
 
 public func configuredAPITextCompletion(backend: AgentBackend,
