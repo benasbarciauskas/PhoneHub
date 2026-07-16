@@ -42,11 +42,18 @@ final class AutomationRunner {
     }
 
     init(store: AutomationStore, agentEngine: AutomationEngine,
-         textSourceStore: TextSourceStore? = nil) {
+         textSourceStore: TextSourceStore? = nil,
+         commandGate: @escaping (Device?) -> String? = { device in
+             llmCommandBlockReason(device: device,
+                                   iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
+         }) {
         self.store = store
         self.agentEngine = agentEngine
         self.textSourceStore = textSourceStore ?? TextSourceStore()
+        self.commandGate = commandGate
     }
+
+    private let commandGate: (Device?) -> String?
 
     var isBusy: Bool {
         switch state {
@@ -66,6 +73,10 @@ final class AutomationRunner {
         }
         if device.platform == .android, !isValidSerial(device.id) {
             fail("Invalid Android device serial.")
+            return
+        }
+        if let reason = commandGate(device) {
+            fail(reason)
             return
         }
 

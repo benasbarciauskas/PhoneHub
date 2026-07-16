@@ -33,6 +33,7 @@ final class DeviceStoreTests: XCTestCase {
         let stale = Device(id: "stale-ios", platform: .ios, model: "Old iPhone",
                            osVersion: "18.0", status: "notConnected")
         let store = DeviceStore()
+        store.mirrorPresenceProvider = { false }
         store.devices = [stale]
 
         store.remove(deviceId: stale.id)
@@ -132,5 +133,45 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertEqual(reopened.wallGridPreset, .auto)
         XCTAssertTrue(reopened.wallTileOrder.isEmpty)
         XCTAssertTrue(reopened.wallZoomByDeviceID.isEmpty)
+    }
+}
+
+@MainActor
+final class DeviceStoreMirrorPresenceTests: XCTestCase {
+    private func temporaryDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DeviceStoreMirror-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    func testRemovedIPhoneReturnsWhenMirroringIsActive() throws {
+        let store = DeviceStore(directory: try temporaryDirectory())
+        let iphone = Device(id: "udid-16pro", platform: .ios, model: "iPhone 16 Pro",
+                            osVersion: "26.3", status: "notConnected")
+        store.mirrorPresenceProvider = { false }
+        store.applyDiscovery([iphone])
+        store.remove(deviceId: iphone.id)
+
+        // Still hidden while no mirror window exists.
+        store.applyDiscovery([iphone])
+        XCTAssertTrue(store.devices.isEmpty)
+
+        // User reconnects via iPhone Mirroring: device reappears with its name.
+        store.mirrorPresenceProvider = { true }
+        store.applyDiscovery([iphone])
+        XCTAssertEqual(store.devices.map(\.model), ["iPhone 16 Pro"])
+    }
+
+    func testRemovedIPhoneStillReturnsOnUSBConnection() throws {
+        let store = DeviceStore(directory: try temporaryDirectory())
+        store.mirrorPresenceProvider = { false }
+        let iphone = Device(id: "udid-1", platform: .ios, model: "iPhone 13 Pro",
+                            osVersion: "26.6", status: "connected")
+        store.applyDiscovery([iphone])
+        store.remove(deviceId: iphone.id)
+
+        store.applyDiscovery([iphone])
+        XCTAssertEqual(store.devices.count, 1)
     }
 }

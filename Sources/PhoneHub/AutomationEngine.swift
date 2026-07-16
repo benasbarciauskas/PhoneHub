@@ -66,6 +66,7 @@ final class AutomationEngine {
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
     let apiTextCompletion: (AgentBackend, String) async throws -> String
     private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
+    private let commandGate: (Device?) -> String?
 
     // Interactive-resume state: kept across the awaitingInput pause.
     private var currentPlan: AutomationPlan?
@@ -88,12 +89,17 @@ final class AutomationEngine {
         },
         screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
             LLMConfigStore().load().screenCapturePolicy
+        },
+        commandGate: @escaping (Device?) -> String? = { device in
+            llmCommandBlockReason(device: device,
+                                  iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
         }
     ) {
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
         self.apiTextCompletion = apiTextCompletion
         self.screenCapturePolicyProvider = screenCapturePolicyProvider
+        self.commandGate = commandGate
     }
 
     var isRunning: Bool {
@@ -120,6 +126,7 @@ final class AutomationEngine {
              preferKnownSteps: Bool = false) {
         guard !isBusy else { return }
         isBuilderAction = false
+        if let reason = commandGate(device) { fail(reason); return }
         beginHistory(name: preset.name, device: device)
         do {
             let plan = try buildAutomationPlan(
@@ -144,6 +151,7 @@ final class AutomationEngine {
         isBuilderAction = false
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if let reason = commandGate(device) { fail(reason); return }
         // History shows the actual command, not a generic "Command" title.
         let title = trimmed.count > 60 ? String(trimmed.prefix(60)) + "…" : trimmed
         let preset = Preset(name: title, goal: trimmed, platforms: [device.platform])
@@ -170,6 +178,7 @@ final class AutomationEngine {
         preferKnownSteps: Bool = false
     ) {
         guard !isBusy else { return }
+        if let reason = commandGate(device) { fail(reason); return }
         isBuilderAction = true
         do {
             let plan = try buildBuilderActionPlan(
