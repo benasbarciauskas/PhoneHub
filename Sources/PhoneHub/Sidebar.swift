@@ -59,6 +59,11 @@ struct Sidebar: View {
                     ForEach(store.devices) { device in
                         DeviceRow(device: device, selected: device.id == store.focusedDevice?.id)
                             .onTapGesture { withAnimation(Theme.selection) { store.setFocused(device) } }
+                            .contextMenu {
+                                Button("Remove", role: .destructive) {
+                                    store.remove(deviceId: device.id)
+                                }
+                            }
                     }
                     if store.devices.isEmpty && !store.toolMissing {
                         Text("No devices connected").font(.caption)
