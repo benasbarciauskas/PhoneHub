@@ -13,7 +13,10 @@ let package = Package(
         .testTarget(
             name: "PhoneHubCoreTests",
             dependencies: ["PhoneHubCore"],
-            exclude: ["Fixtures/stream-sample.ndjson"]
+            exclude: [
+                "Fixtures/stream-sample.ndjson",
+                "Fixtures/dumpsys-notification-sample.txt",
+            ]
         ),
         .testTarget(
             name: "PhoneHubTests",
