@@ -44,4 +44,22 @@ final class AutomationCaptureTests: XCTestCase {
         XCTAssertEqual(x2, 10.5); XCTAssertEqual(y2, 20); XCTAssertEqual(duration, 900)
         guard case .typeText(_, "hello") = actions[2] else { return XCTFail("type") }
     }
+
+    func testActionStepsFilterObservationsWithoutInsertingWaits() {
+        let calls = [
+            CapturedCall(tool: "mcp__mirroir__screenshot", rawInput: "{}"),
+            CapturedCall(tool: "describe_screen", rawInput: "{}"),
+            CapturedCall(tool: "status", rawInput: "{}"),
+            CapturedCall(tool: "tap", rawInput: #"{"x":10,"y":20}"#),
+            CapturedCall(tool: "type_text", rawInput: #"{"text":"hello"}"#),
+        ]
+
+        let steps = automationSteps(from: calls)
+
+        XCTAssertEqual(steps.count, 2)
+        guard case let .tap(_, _, x, y) = steps[0] else { return XCTFail("tap") }
+        XCTAssertEqual(x, 10)
+        XCTAssertEqual(y, 20)
+        guard case .typeText(_, "hello") = steps[1] else { return XCTFail("type") }
+    }
 }

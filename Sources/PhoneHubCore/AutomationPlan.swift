@@ -3,6 +3,7 @@ import Foundation
 public enum AutomationPlanError: Error, Equatable {
     case platformMismatch
     case invalidSerial
+    case emptyGoal
 }
 
 public enum AgentBackend: String, Codable, CaseIterable, Sendable {
@@ -194,6 +195,17 @@ private func applyingCaptureDecision(
     decision.allowsCapture ? preamble : preamble + "\n\n" + captureDeniedInstruction
 }
 
+public let builderActionSystemPreamble = """
+You control a phone through the attached tools for an action-timeline builder. \
+For the user's request, perform EXACTLY ONE mutating phone UI action and then \
+stop immediately. You may first use observation-only tools such as screenshot, \
+describe_screen, or status; observations do not count as the one action. After \
+the single mutating tool returns, do not call another mutating tool, even if more \
+work would be needed to finish the broader intent. Do not merely describe the \
+action: execute it. If no safe single action can be chosen, make no mutation and \
+briefly explain why.
+"""
+
 private struct PlatformWiring {
     let server: String
     let mcpJSON: String
@@ -320,6 +332,29 @@ public func buildChatPlan(
         maxTurns: 25,
         serverName: wiring.server,
         screenCaptureDecision: captureDecision
+    )
+}
+
+public func buildBuilderActionPlan(
+    goal: String,
+    device: Device,
+    backend: AgentBackend = .claude,
+    preferKnownSteps: Bool = false
+) throws -> AutomationPlan {
+    let goal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !goal.isEmpty else { throw AutomationPlanError.emptyGoal }
+    let wiring = try platformWiring(for: device)
+    let preamble = preferKnownSteps
+        ? builderActionSystemPreamble + "\n\n" + preferKnownStepsInstruction
+        : builderActionSystemPreamble
+    return AutomationPlan(
+        backend: backend,
+        prompt: "\(goal)\n\n\(wiring.deviceContext)",
+        systemPreamble: preamble,
+        mcpConfigJSON: wiring.mcpJSON,
+        allowedTools: wiring.allowedTools,
+        maxTurns: 4,
+        serverName: wiring.server
     )
 }
 
