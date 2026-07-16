@@ -42,6 +42,32 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertTrue(client.stopped)
     }
 
+    func testDisabledCapturePolicyIsResolvedForRunAndLoggedOnce() async throws {
+        let provider = AppSequenceProvider([
+            LLMResponse(text: "Done.", toolCalls: [])
+        ])
+        var receivedPlan: AutomationPlan?
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, plan in
+                receivedPlan = plan
+                return ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
+            },
+            screenCapturePolicyProvider: { .disabled }
+        )
+        let preset = Preset(name: "Private run", goal: "Open Settings", platforms: [.ios])
+        let device = Device(id: "ios", platform: .ios, model: "iPhone",
+                            osVersion: "18", status: "connected")
+
+        engine.run(preset: preset, on: device, backend: .openai)
+        try await waitUntil { engine.state == .finished }
+
+        XCTAssertEqual(receivedPlan?.screenCaptureDecision.allowsCapture, false)
+        XCTAssertEqual(engine.log.filter {
+            $0 == "screen capture disabled in settings — using text description only"
+        }.count, 1)
+    }
+
     func testTerminalPresetRunAppendsHistoryRecord() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("EngineHistory-\(UUID().uuidString)", isDirectory: true)

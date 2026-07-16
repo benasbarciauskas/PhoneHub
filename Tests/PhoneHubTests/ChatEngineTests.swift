@@ -78,6 +78,34 @@ final class ChatEngineTests: XCTestCase {
         XCTAssertTrue(client.stopped)
     }
 
+    func testDisabledCapturePolicyIsResolvedForTurnAndLoggedOnce() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let provider = AppSequenceProvider([
+            LLMResponse(text: "Text-only answer.", toolCalls: [])
+        ])
+        var receivedPlan: AutomationPlan?
+        let engine = ChatEngine(
+            store: ChatStore(directory: directory),
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, plan in
+                receivedPlan = plan
+                return ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
+            },
+            screenCapturePolicyProvider: { .disabled }
+        )
+
+        XCTAssertTrue(engine.send(
+            "What is visible?", on: device, backend: .openai, presetEngineBusy: false
+        ))
+        try await waitUntil { !engine.isBusy }
+
+        XCTAssertEqual(receivedPlan?.screenCaptureDecision.allowsCapture, false)
+        XCTAssertEqual(engine.chat.messages.filter {
+            $0.text == "screen capture disabled in settings — using text description only"
+        }.count, 1)
+    }
+
     private func makeEngine(
         backendStatus: BackendStatus = .available(path: "/usr/bin/false")
     ) -> ChatEngine {

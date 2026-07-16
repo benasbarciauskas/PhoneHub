@@ -18,6 +18,7 @@ final class ChatEngine {
     private let store: ChatStore
     private let backendAvailability: (AgentBackend) -> BackendStatus
     private let apiRuntimeFactory: (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime
+    private let screenCapturePolicyProvider: () -> ScreenCapturePolicy
     private var process: StreamingProcess?
     private var apiTask: Task<Void, Never>?
     private var configURL: URL?
@@ -34,10 +35,14 @@ final class ChatEngine {
     ), backendAvailability: @escaping (AgentBackend) -> BackendStatus = { BackendAvailability.check($0) },
          apiRuntimeFactory: @escaping (AgentBackend, AutomationPlan) throws -> ApiAgentRuntime = {
              try makeConfiguredAPIRuntime(backend: $0, plan: $1)
+         },
+         screenCapturePolicyProvider: @escaping () -> ScreenCapturePolicy = {
+             LLMConfigStore().load().screenCapturePolicy
          }) {
         self.store = store
         self.backendAvailability = backendAvailability
         self.apiRuntimeFactory = apiRuntimeFactory
+        self.screenCapturePolicyProvider = screenCapturePolicyProvider
     }
 
     var isBusy: Bool {
@@ -88,12 +93,20 @@ final class ChatEngine {
 
         let plan: AutomationPlan
         do {
-            plan = try buildChatPlan(device: device, backend: backend)
+            plan = try buildChatPlan(
+                device: device,
+                backend: backend,
+                screenCapturePolicy: screenCapturePolicyProvider(),
+                isRunActive: true
+            )
         } catch {
             fail("Could not prepare chat: \(error)")
             return false
         }
         append(.user, trimmed)
+        if let notice = plan.screenCaptureDecision.logMessage {
+            append(.system, notice)
+        }
         currentPlan = plan
         executablePath = path
         pendingText = trimmed
