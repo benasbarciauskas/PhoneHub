@@ -18,11 +18,22 @@ final class AutomationRunner {
     private(set) var runningAutomationID: UUID?
     var backend: AgentBackend = .claude
 
+    /// Optional; when set, every terminal automation run is appended to per-device history.
+    var runHistoryStore: RunHistoryStore?
+
     private let store: AutomationStore
     private let agentEngine: AutomationEngine
     private var task: Task<Void, Never>?
     private var client: McpDirectClient?
     private var runToken: UUID?
+    private var historyContext: HistoryContext?
+
+    private struct HistoryContext {
+        let name: String
+        let deviceId: String
+        let deviceName: String
+        let startedAt: Date
+    }
 
     init(store: AutomationStore, agentEngine: AutomationEngine) {
         self.store = store
@@ -36,6 +47,8 @@ final class AutomationRunner {
 
     func run(_ automation: Automation, on device: Device, othersBusy: Bool) {
         guard !isBusy else { return }
+        log = []
+        beginHistory(name: automation.name, device: device)
         guard !othersBusy else { fail("Another automation or chat is active."); return }
         guard automation.platform == device.platform else {
             fail("This automation is for \(automation.platform.rawValue), not \(device.platform.rawValue).")
@@ -66,11 +79,13 @@ final class AutomationRunner {
         if isBusy {
             log.append("— Stopped by user —")
             state = .idle
+            recordHistory(.stopped)
         }
     }
 
     func clearResult() {
         guard !isBusy else { return }
+        historyContext = nil
         state = .idle
         log = []
         runningAutomationID = nil
@@ -89,7 +104,13 @@ final class AutomationRunner {
         do {
             try await connection.start()
             let steps = stepsToRun(automation: automation)
-            guard !steps.isEmpty else { state = .finished; return }
+            guard !steps.isEmpty else {
+                if runToken == token {
+                    state = .finished
+                    recordHistory(.finished)
+                }
+                return
+            }
             var iteration = 0
             while true {
                 for (index, step) in steps.enumerated() {
@@ -135,8 +156,10 @@ final class AutomationRunner {
             if runToken == token {
                 state = .finished
                 log.append("Finished.")
+                recordHistory(.finished)
             }
         } catch is CancellationError {
+            // stop() records .stopped; only clear busy if still running under this token.
             if runToken == token, isBusy { state = .idle }
         } catch {
             if runToken == token { fail(error.localizedDescription) }
@@ -228,6 +251,35 @@ final class AutomationRunner {
     private func fail(_ message: String) {
         state = .failed(message)
         log.append(message)
+        recordHistory(.failed)
+    }
+
+    private func beginHistory(name: String, device: Device) {
+        historyContext = HistoryContext(
+            name: name,
+            deviceId: device.id,
+            deviceName: device.model,
+            startedAt: .now
+        )
+    }
+
+    private func recordHistory(_ outcome: RunOutcome) {
+        guard let ctx = historyContext else { return }
+        historyContext = nil
+        guard let store = runHistoryStore else { return }
+        store.append(
+            RunRecord(
+                name: ctx.name,
+                kind: .automation,
+                deviceId: ctx.deviceId,
+                deviceName: ctx.deviceName,
+                startedAt: ctx.startedAt,
+                endedAt: .now,
+                outcome: outcome,
+                log: log
+            ),
+            deviceId: ctx.deviceId
+        )
     }
 }
 

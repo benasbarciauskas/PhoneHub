@@ -42,6 +42,39 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertTrue(client.stopped)
     }
 
+    func testTerminalPresetRunAppendsHistoryRecord() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EngineHistory-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let history = RunHistoryStore(directory: dir)
+        let provider = AppSequenceProvider([
+            LLMResponse(text: "Done here.", toolCalls: [])
+        ])
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "api") },
+            apiRuntimeFactory: { _, _ in
+                ApiAgentRuntime(provider: provider, client: AppRecordingMCPClient())
+            }
+        )
+        engine.runHistoryStore = history
+        let preset = Preset(name: "Hist preset", goal: "Tap Home", platforms: [.ios])
+        let device = Device(id: "hist-ios", platform: .ios, model: "iPhone 15",
+                            osVersion: "18", status: "connected")
+
+        engine.run(preset: preset, on: device, backend: .openai)
+        try await waitUntil { engine.state == .finished }
+
+        let records = history.records(deviceId: "hist-ios")
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0].name, "Hist preset")
+        XCTAssertEqual(records[0].kind, .preset)
+        XCTAssertEqual(records[0].outcome, .finished)
+        XCTAssertEqual(records[0].deviceName, "iPhone 15")
+        XCTAssertFalse(records[0].log.isEmpty)
+    }
+
     func testCondenseUsesTextOnlyAPICompletion() async throws {
         let engine = AutomationEngine(
             backendAvailability: { _ in .available(path: "keychain") },
