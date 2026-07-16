@@ -16,12 +16,7 @@ public enum CondenseError: Error, LocalizedError {
 
 public enum CondensePrompt {
     public static func prompt(goal: String, rawSteps: [AutomationStep]) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data: Data
-        do { data = try encoder.encode(rawSteps) }
-        catch { throw CondenseError.encoding(error.localizedDescription) }
-        let json = String(decoding: data, as: UTF8.self)
+        let json = try rawStepsJSON(rawSteps)
         return """
         Condense a raw phone automation trace into the minimal correct action sequence for the goal. \
         Remove mistakes, dead ends, repeated probes, and backtracking. Preserve required waits. \
@@ -38,6 +33,18 @@ public enum CondensePrompt {
         \(goal)
 
         Raw steps:
+        \(json)
+        """
+    }
+
+    public static func descriptionPrompt(rawSteps: [AutomationStep]) throws -> String {
+        let json = try rawStepsJSON(rawSteps)
+        return """
+        Describe what the person is trying to accomplish from this recorded phone action trace. \
+        Respond with one short 4-12 words natural-language description in plain text. \
+        Do not use quotes, markdown, a trailing period, or mention taps, coordinates, or recording.
+
+        Recorded steps:
         \(json)
         """
     }
@@ -64,6 +71,31 @@ public enum CondensePrompt {
         catch { throw CondenseError.invalidResponse(error.localizedDescription) }
         for step in steps { try validate(step) }
         return steps
+    }
+
+    public static func parseDescription(_ response: String) throws -> String {
+        var value = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.count >= 2, value.first == "\"", value.last == "\"" {
+            value.removeFirst()
+            value.removeLast()
+        }
+        value = value.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !value.isEmpty else {
+            throw CondenseError.invalidResponse("expected a short plain-text description")
+        }
+        return value
+    }
+
+    private static func rawStepsJSON(_ rawSteps: [AutomationStep]) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        do {
+            return String(decoding: try encoder.encode(rawSteps), as: UTF8.self)
+        } catch {
+            throw CondenseError.encoding(error.localizedDescription)
+        }
     }
 
     private static func validate(_ step: AutomationStep) throws {

@@ -78,9 +78,11 @@ final class HumanRecorder {
         guard isAccessibilityTrusted() else { throw HumanRecorderError.accessibilityRequired }
 
         let deviceSize = try await resolveDeviceSize(device)
+        try Task.checkCancellation()
         guard let resolved = resolveTarget(device: device, deviceSize: deviceSize) else {
             throw HumanRecorderError.mirrorWindowUnavailable
         }
+        try Task.checkCancellation()
 
         target = resolved
         translator = HumanRecordingTranslator()

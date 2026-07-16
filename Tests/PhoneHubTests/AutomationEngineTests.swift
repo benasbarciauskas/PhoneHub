@@ -147,6 +147,26 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertFalse(engine.isCondensing)
     }
 
+    func testDescribeRecordingReusesTextOnlyAPICompletion() async throws {
+        let engine = AutomationEngine(
+            backendAvailability: { _ in .available(path: "keychain") },
+            apiRuntimeFactory: { _, _ in throw LLMProviderFactoryError.unsupportedBackend },
+            apiTextCompletion: { backend, prompt in
+                XCTAssertEqual(backend, .openai)
+                XCTAssertTrue(prompt.contains("4-12 words"))
+                return "Open Settings and enable notifications"
+            }
+        )
+
+        let description = try await engine.describeRecording(
+            rawSteps: [.tap(id: UUID(), label: nil, x: 10, y: 20)],
+            backend: .openai
+        )
+
+        XCTAssertEqual(description, "Open Settings and enable notifications")
+        XCTAssertFalse(engine.isCondensing)
+    }
+
     private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
         for _ in 0..<100 where !predicate() {
             try await Task.sleep(nanoseconds: 10_000_000)

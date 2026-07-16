@@ -38,4 +38,25 @@ final class CondensePromptTests: XCTestCase {
         let unknown = #"[{"type":"future","id":"00000000-0000-0000-0000-000000000001"}]"#
         XCTAssertThrowsError(try CondensePrompt.parseResponse(unknown))
     }
+
+    func testDescriptionPromptIncludesRawStepsAndRequestsShortPlainLanguage() throws {
+        let step = AutomationStep.typeText(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            text: "hello"
+        )
+
+        let prompt = try CondensePrompt.descriptionPrompt(rawSteps: [step])
+
+        XCTAssertTrue(prompt.contains(#""type" : "typeText""#))
+        XCTAssertTrue(prompt.contains("4-12 words"))
+        XCTAssertTrue(prompt.contains("plain text"))
+    }
+
+    func testParsesTrimmedRecordingDescriptionAndRejectsEmpty() throws {
+        XCTAssertEqual(
+            try CondensePrompt.parseDescription("  \"Search for a contact\"  \n"),
+            "Search for a contact"
+        )
+        XCTAssertThrowsError(try CondensePrompt.parseDescription(" \n "))
+    }
 }
