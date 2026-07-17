@@ -31,11 +31,19 @@ public func adbArgs(serial: String, _ rest: String...) -> [String] {
     ["-s", serial] + rest
 }
 
-public struct CommandResult {
+public struct CommandResult: Sendable {
     public let exitCode: Int32
     public let stdout: Data
     public let stderr: String
+
+    public init(exitCode: Int32, stdout: Data, stderr: String) {
+        self.exitCode = exitCode
+        self.stdout = stdout
+        self.stderr = stderr
+    }
 }
+
+public typealias ShellCommandRunner = (String, TimeInterval) async throws -> CommandResult
 
 public enum ShellError: Error { case toolNotFound(String) }
 
@@ -122,4 +130,11 @@ public func runToolAt(path: String, args: [String], timeout: TimeInterval = 30) 
     return CommandResult(exitCode: proc.terminationStatus,
                          stdout: outData.data,
                          stderr: String(data: errData.data, encoding: .utf8) ?? "")
+}
+
+/// Run a user-configured command through the login shell without blocking the caller's actor.
+public func runShellCommand(_ command: String, timeout: TimeInterval = 30) async throws -> CommandResult {
+    try await Task.detached {
+        try runToolAt(path: "/bin/zsh", args: ["-lc", command], timeout: timeout)
+    }.value
 }

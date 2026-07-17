@@ -6,6 +6,42 @@ final class TextSourceTests: XCTestCase {
     private let firstStepID = UUID(uuidString: "00000000-0000-0000-0000-000000000020")!
     private let secondStepID = UUID(uuidString: "00000000-0000-0000-0000-000000000021")!
 
+    func testRefreshCommandRoundTripsAndLegacyJSONDecodes() throws {
+        let source = TextSource(
+            id: sourceID,
+            name: "Captions",
+            items: ["one"],
+            mode: .cycle,
+            refreshCommand: "buffer-next"
+        )
+
+        let encoded = try JSONEncoder().encode(source)
+        XCTAssertEqual(try JSONDecoder().decode(TextSource.self, from: encoded), source)
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "refreshCommand")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertNil(try JSONDecoder().decode(TextSource.self, from: legacyData).refreshCommand)
+    }
+
+    func testRefreshOutputParsesJSONArrayOfStrings() throws {
+        let items = try parseTextSourceRefreshOutput(Data(#"["one", " two "]"#.utf8))
+
+        XCTAssertEqual(items, ["one", " two "])
+    }
+
+    func testRefreshOutputFallsBackToTrimmedNonEmptyLines() throws {
+        let items = try parseTextSourceRefreshOutput(Data(" one \n\n two \r\n".utf8))
+
+        XCTAssertEqual(items, ["one", "two"])
+    }
+
+    func testRefreshOutputRejectsEmptyResult() {
+        XCTAssertThrowsError(try parseTextSourceRefreshOutput(Data(" \n\t\n".utf8))) { error in
+            XCTAssertEqual(error as? TextSourceRefreshError, .emptyResult)
+        }
+    }
+
     func testCycleSourceResolvesOnceForEveryBoundStepAndPlansOneWrap() throws {
         let source = TextSource(
             id: sourceID,

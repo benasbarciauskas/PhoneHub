@@ -9,6 +9,9 @@ struct TextSourcesSheet: View {
 
     @State private var showingImporter = false
     @State private var importError: String?
+    @State private var testingSourceID: UUID?
+    @State private var testResults: [UUID: String] = [:]
+    @State private var testFailures: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s3) {
@@ -58,35 +61,95 @@ struct TextSourcesSheet: View {
     }
 
     private func sourceRow(_ source: TextSource) -> some View {
-        HStack(spacing: Theme.s3) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(source.name).font(.system(size: 13, weight: .medium))
-                Text("\(source.items.count) item\(source.items.count == 1 ? "" : "s") · \(position(source))")
-                    .font(.caption)
-                    .foregroundStyle(Theme.subtext)
-            }
-            Spacer()
-            Picker("Mode", selection: Binding(
-                get: { source.mode },
-                set: { mode in
-                    var updated = source
-                    updated.mode = mode
-                    store.update(updated)
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            HStack(spacing: Theme.s3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(source.name).font(.system(size: 13, weight: .medium))
+                    Text("\(source.items.count) item\(source.items.count == 1 ? "" : "s") · \(position(source))")
+                        .font(.caption)
+                        .foregroundStyle(Theme.subtext)
                 }
-            )) {
-                Text("Static").tag(TextSourceMode.static)
-                Text("Cycle").tag(TextSourceMode.cycle)
+                Spacer()
+                Picker("Mode", selection: Binding(
+                    get: { source.mode },
+                    set: { mode in
+                        var updated = source
+                        updated.mode = mode
+                        store.update(updated)
+                    }
+                )) {
+                    Text("Static").tag(TextSourceMode.static)
+                    Text("Cycle").tag(TextSourceMode.cycle)
+                }
+                .labelsHidden()
+                .frame(width: 90)
+                Button("Reset") { store.resetCursor(source.id) }
+                    .disabled(source.cursor == 0)
+                Button(role: .destructive) { store.delete(source.id) } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.plain)
             }
-            .labelsHidden()
-            .frame(width: 90)
-            Button("Reset") { store.resetCursor(source.id) }
-                .disabled(source.cursor == 0)
-            Button(role: .destructive) { store.delete(source.id) } label: {
-                Image(systemName: "trash")
+
+            HStack(spacing: Theme.s2) {
+                TextField("Refresh command", text: refreshCommandBinding(source.id))
+                    .textFieldStyle(.roundedBorder)
+                Button {
+                    test(source.id)
+                } label: {
+                    if testingSourceID == source.id {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Test")
+                    }
+                }
+                .disabled(testingSourceID != nil || refreshCommand(source.id).isEmpty)
             }
-            .buttonStyle(.plain)
+            Text("Runs before each use; stdout (JSON array or lines) replaces items.")
+                .font(.caption)
+                .foregroundStyle(Theme.subtext)
+            if let result = testResults[source.id] {
+                Text(result)
+                    .font(.caption)
+                    .foregroundStyle(testFailures.contains(source.id) ? Theme.err : Theme.ok)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.vertical, Theme.s1)
+    }
+
+    private func refreshCommand(_ sourceID: UUID) -> String {
+        store.sources.first(where: { $0.id == sourceID })?.refreshCommand?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func refreshCommandBinding(_ sourceID: UUID) -> Binding<String> {
+        Binding(
+            get: { store.sources.first(where: { $0.id == sourceID })?.refreshCommand ?? "" },
+            set: { value in
+                guard var source = store.sources.first(where: { $0.id == sourceID }) else { return }
+                source.refreshCommand = value.isEmpty ? nil : value
+                store.update(source)
+                testResults[sourceID] = nil
+                testFailures.remove(sourceID)
+            }
+        )
+    }
+
+    private func test(_ sourceID: UUID) {
+        testingSourceID = sourceID
+        testResults[sourceID] = nil
+        testFailures.remove(sourceID)
+        Task {
+            do {
+                let count = try await store.refresh(sourceID)
+                testResults[sourceID] = "Loaded \(count) item\(count == 1 ? "" : "s")."
+            } catch {
+                testResults[sourceID] = error.localizedDescription
+                testFailures.insert(sourceID)
+            }
+            testingSourceID = nil
+        }
     }
 
     private func position(_ source: TextSource) -> String {

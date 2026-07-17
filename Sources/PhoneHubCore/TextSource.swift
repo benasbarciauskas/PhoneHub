@@ -11,19 +11,46 @@ public struct TextSource: Codable, Equatable, Identifiable, Sendable {
     public var items: [String]
     public var cursor: Int
     public var mode: TextSourceMode
+    public var refreshCommand: String?
 
     public init(
         id: UUID = UUID(),
         name: String,
         items: [String],
         cursor: Int = 0,
-        mode: TextSourceMode
+        mode: TextSourceMode,
+        refreshCommand: String? = nil
     ) {
         self.id = id
         self.name = name
         self.items = items
         self.cursor = cursor
         self.mode = mode
+        self.refreshCommand = refreshCommand
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, items, cursor, mode, refreshCommand
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        items = try values.decode([String].self, forKey: .items)
+        cursor = try values.decodeIfPresent(Int.self, forKey: .cursor) ?? 0
+        mode = try values.decode(TextSourceMode.self, forKey: .mode)
+        refreshCommand = try values.decodeIfPresent(String.self, forKey: .refreshCommand)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(name, forKey: .name)
+        try values.encode(items, forKey: .items)
+        try values.encode(cursor, forKey: .cursor)
+        try values.encode(mode, forKey: .mode)
+        try values.encodeIfPresent(refreshCommand, forKey: .refreshCommand)
     }
 
     public var normalizedCursor: Int {
@@ -35,6 +62,40 @@ public struct TextSource: Codable, Equatable, Identifiable, Sendable {
         guard !items.isEmpty else { return nil }
         return items[normalizedCursor]
     }
+}
+
+public enum TextSourceRefreshError: Error, Equatable, LocalizedError, Sendable {
+    case invalidUTF8
+    case emptyResult
+    case commandFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidUTF8: return "Refresh command output is not valid UTF-8."
+        case .emptyResult: return "Refresh command returned no text items."
+        case .commandFailed(let detail): return "Refresh command failed: \(detail)"
+        }
+    }
+}
+
+public func parseTextSourceRefreshOutput(_ data: Data) throws -> [String] {
+    guard let output = String(data: data, encoding: .utf8) else {
+        throw TextSourceRefreshError.invalidUTF8
+    }
+    let items: [String]
+    if let object = try? JSONSerialization.jsonObject(with: data),
+       let array = object as? [Any],
+       array.allSatisfy({ $0 is String }) {
+        items = array.compactMap { $0 as? String }
+    } else {
+        items = output.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+    let nonEmpty = items.filter {
+        !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    guard !nonEmpty.isEmpty else { throw TextSourceRefreshError.emptyResult }
+    return nonEmpty
 }
 
 public struct TextSourceRef: Codable, Equatable, Sendable {

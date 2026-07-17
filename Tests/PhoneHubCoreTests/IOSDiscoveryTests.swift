@@ -10,7 +10,7 @@ final class IOSDiscoveryTests: XCTestCase {
               {
                 "identifier": "C59850DA-1234-4567-89AB-ABCDEF123456",
                 "deviceProperties": {
-                  "name": "Benas iPhone",
+                  "name": "Test iPhone",
                   "osVersionNumber": "26.6",
                   "osBuildUpdate": "23G93",
                   "developerModeStatus": "enabled"
@@ -73,7 +73,7 @@ final class IOSDiscoveryTests: XCTestCase {
               {
                 "identifier": "C59850DA-1234-4567-89AB-ABCDEF123456",
                 "deviceProperties": {
-                  "name": "Benas iPhone",
+                  "name": "Test iPhone",
                   "osVersionNumber": "26.6"
                 },
                 "hardwareProperties": {
@@ -178,7 +178,7 @@ final class IOSDiscoveryTests: XCTestCase {
             "devices": [
               {
                 "identifier": "00008110-001234563C91801E",
-                "deviceProperties": { "name": "Benas iPhone" },
+                "deviceProperties": { "name": "Test iPhone" },
                 "hardwareProperties": {
                   "platform": "iOS"
                 },
@@ -193,7 +193,7 @@ final class IOSDiscoveryTests: XCTestCase {
 
         XCTAssertEqual(devices.count, 1)
         XCTAssertEqual(devices[0].id, "00008110-001234563C91801E")
-        XCTAssertEqual(devices[0].model, "Benas iPhone")
+        XCTAssertEqual(devices[0].model, "Test iPhone")
         XCTAssertEqual(devices[0].osVersion, "")
         XCTAssertEqual(devices[0].status, "notConnected")
     }

@@ -69,6 +69,57 @@ public final class TextSourceStore {
         try resolve(automation).steps
     }
 
+    @discardableResult
+    public func refresh(
+        _ sourceID: UUID,
+        using commandRunner: ShellCommandRunner = runShellCommand
+    ) async throws -> Int {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else {
+            throw TextSourceResolutionError.missingSource(sourceID)
+        }
+        let source = sources[index]
+        guard let command = source.refreshCommand,
+              !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return source.items.count
+        }
+        let result: CommandResult
+        do {
+            result = try await commandRunner(command, 30)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw TextSourceRefreshError.commandFailed(error.localizedDescription)
+        }
+        try Task.checkCancellation()
+        guard result.exitCode == 0 else {
+            let detail = firstNonEmptyLine(result.stderr)
+                ?? firstNonEmptyLine(String(data: result.stdout, encoding: .utf8) ?? "")
+                ?? "exit status \(result.exitCode)"
+            throw TextSourceRefreshError.commandFailed(
+                "exit status \(result.exitCode): \(detail)"
+            )
+        }
+        var refreshed = source
+        refreshed.items = try parseTextSourceRefreshOutput(result.stdout)
+        refreshed.cursor = 0
+        let validated = try validate(refreshed)
+        sources[index] = validated
+        save()
+        return validated.items.count
+    }
+
+    public func refreshSources(
+        for automation: Automation,
+        using commandRunner: ShellCommandRunner = runShellCommand
+    ) async throws {
+        let stepIDs = Set(automation.steps.map(\.id))
+        var refreshed = Set<UUID>()
+        for (stepID, reference) in automation.textSourceBindings where stepIDs.contains(stepID) {
+            guard refreshed.insert(reference.sourceID).inserted else { continue }
+            _ = try await refresh(reference.sourceID, using: commandRunner)
+        }
+    }
+
     /// Commits the cycle plan after a successful run. A cursor that changed
     /// since resolution is left untouched to avoid overwriting newer state.
     @discardableResult
@@ -115,5 +166,11 @@ public final class TextSourceStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(sources) else { return }
         try? PresetStore.atomicWrite(data, to: fileURL)
+    }
+
+    private func firstNonEmptyLine(_ text: String) -> String? {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 }

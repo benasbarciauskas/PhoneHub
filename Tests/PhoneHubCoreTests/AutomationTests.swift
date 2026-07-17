@@ -46,6 +46,7 @@ final class AutomationTests: XCTestCase {
         XCTAssertFalse(automation.pinned)
         XCTAssertNil(automation.rawSteps)
         XCTAssertNil(automation.sourceGoal)
+        XCTAssertNil(automation.onSuccessCommand)
     }
 
     func testLegacyAutomationWithoutTextSourceBindingsStillDecodes() throws {
@@ -59,5 +60,19 @@ final class AutomationTests: XCTestCase {
 
         XCTAssertEqual(decoded.name, "Legacy")
         XCTAssertTrue(decoded.textSourceBindings.isEmpty)
+        XCTAssertNil(decoded.onSuccessCommand)
+    }
+
+    func testOnSuccessCommandRoundTrips() throws {
+        let automation = Automation(
+            name: "Post",
+            platform: .ios,
+            steps: [],
+            onSuccessCommand: "buffer-mark-posted"
+        )
+
+        let data = try JSONEncoder().encode(automation)
+
+        XCTAssertEqual(try JSONDecoder().decode(Automation.self, from: data), automation)
     }
 }
