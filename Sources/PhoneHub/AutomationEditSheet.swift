@@ -80,6 +80,13 @@ struct AutomationEditSheet: View {
             }
             Toggle("Share coordinates across devices", isOn: $draft.sharedCoordinates)
             Toggle("Pin as stage action", isOn: $draft.pinned)
+            VStack(alignment: .leading, spacing: Theme.s1) {
+                TextField("On success, run command", text: onSuccessCommand)
+                    .textFieldStyle(.roundedBorder)
+                Text("Runs after every step completes successfully.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.subtext)
+            }
             if draft.rawSteps != nil {
                 Button { condense() } label: {
                     if engine.isCondensing {
@@ -154,5 +161,11 @@ struct AutomationEditSheet: View {
     private var loopCount: Binding<Int> {
         Binding(get: { if case let .times(count) = draft.loop { return count }; return 2 },
                 set: { draft.loop = .times(max(1, $0)) })
+    }
+    private var onSuccessCommand: Binding<String> {
+        Binding(
+            get: { draft.onSuccessCommand ?? "" },
+            set: { draft.onSuccessCommand = $0.isEmpty ? nil : $0 }
+        )
     }
 }

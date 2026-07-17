@@ -30,7 +30,7 @@ final class AutomationRunner {
     private let textSourceStore: TextSourceStore
     private let agentEngine: AutomationEngine
     private var task: Task<Void, Never>?
-    private var client: McpDirectClient?
+    private var client: (any McpToolClient)?
     private var runToken: UUID?
     private var historyContext: HistoryContext?
 
@@ -53,6 +53,8 @@ final class AutomationRunner {
         llmCommandBlockReason(device: device,
                               iosMirrorWindowVisible: MirrorPresence.iosMirrorWindowVisible())
     }
+    var commandRunner: ShellCommandRunner = runShellCommand
+    var mcpClientFactory: (Platform) -> any McpToolClient = makePhoneMcpClient
 
     var isBusy: Bool {
         switch state {
@@ -125,16 +127,21 @@ final class AutomationRunner {
         do {
             // Bind each source once at run start. Cycle cursors are committed only
             // after every iteration succeeds, so failed and cancelled runs consume nothing.
+            try await textSourceStore.refreshSources(for: automation, using: commandRunner)
+            try Task.checkCancellation()
             let textResolution = try textSourceStore.resolve(automation)
             automation.steps = textResolution.steps
-            let initial = makePhoneMcpClient(for: currentDevice.platform)
+            let initial = mcpClientFactory(currentDevice.platform)
             client = initial
             try await initial.start()
             let steps = stepsToRun(automation: automation)
             guard !steps.isEmpty else {
                 if runToken == token {
-                    state = .finished
-                    recordHistory(.finished)
+                    await finishSuccessfulRun(
+                        automation: automation,
+                        textResolution: textResolution,
+                        token: token
+                    )
                 }
                 return
             }
@@ -202,10 +209,11 @@ final class AutomationRunner {
                 iteration = next
             }
             if runToken == token {
-                log.append(contentsOf: textSourceStore.commit(textResolution))
-                state = .finished
-                log.append("Finished.")
-                recordHistory(.finished)
+                await finishSuccessfulRun(
+                    automation: automation,
+                    textResolution: textResolution,
+                    token: token
+                )
             }
         } catch is CancellationError {
             // stop() records .stopped; only clear busy if still running under this token.
@@ -217,7 +225,7 @@ final class AutomationRunner {
 
     private func switchTo(_ device: Device) async throws {
         stopClient()
-        let next = makePhoneMcpClient(for: device.platform)
+        let next = mcpClientFactory(device.platform)
         client = next
         try await next.start()
     }
@@ -228,7 +236,7 @@ final class AutomationRunner {
     }
 
     private func invoke(_ step: AutomationStep, binding: Automation.Binding?, device: Device,
-                        client: McpDirectClient) async throws {
+                        client: any McpToolClient) async throws {
         // Use the *current* device platform (may differ from automation.platform after switchDevice).
         guard let invocation = try toolInvocation(for: step, platform: device.platform,
                                                   serial: device.platform == .android ? device.id : nil,
@@ -296,6 +304,65 @@ final class AutomationRunner {
         try await Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
     }
 
+    private func finishSuccessfulRun(
+        automation: Automation,
+        textResolution: TextSourceResolution,
+        token: UUID
+    ) async {
+        guard runToken == token else { return }
+        log.append(contentsOf: textSourceStore.commit(textResolution))
+        state = .finished
+        log.append("Finished.")
+        let context = historyContext
+        historyContext = nil
+        let finishedAt = Date.now
+        let finishedLog = log
+
+        guard let command = automation.onSuccessCommand,
+              !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if let context {
+                appendHistory(context, outcome: .finished, log: finishedLog, endedAt: finishedAt)
+            }
+            return
+        }
+        let commandRunner = commandRunner
+        let historyStore = runHistoryStore
+        Task {
+            let hookLog: String
+            do {
+                let result = try await commandRunner(command, 30)
+                let detail = firstNonEmptyLine(String(data: result.stdout, encoding: .utf8) ?? "")
+                    ?? firstNonEmptyLine(result.stderr)
+                hookLog = "On-success command exited \(result.exitCode)"
+                    + (detail.map { ": \($0)" } ?? "")
+            } catch {
+                hookLog = "On-success command failed: \(error.localizedDescription)"
+            }
+            guard let context, let historyStore else { return }
+            var historyLog = finishedLog
+            historyLog.append(hookLog)
+            historyStore.append(
+                RunRecord(
+                    name: context.name,
+                    kind: .automation,
+                    deviceId: context.deviceId,
+                    deviceName: context.deviceName,
+                    startedAt: context.startedAt,
+                    endedAt: finishedAt,
+                    outcome: .finished,
+                    log: historyLog
+                ),
+                deviceId: context.deviceId
+            )
+        }
+    }
+
+    private func firstNonEmptyLine(_ text: String) -> String? {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
     private func fail(_ message: String) {
         state = .failed(message)
         log.append(message)
@@ -314,19 +381,28 @@ final class AutomationRunner {
     private func recordHistory(_ outcome: RunOutcome) {
         guard let ctx = historyContext else { return }
         historyContext = nil
+        appendHistory(ctx, outcome: outcome, log: log, endedAt: .now)
+    }
+
+    private func appendHistory(
+        _ context: HistoryContext,
+        outcome: RunOutcome,
+        log: [String],
+        endedAt: Date
+    ) {
         guard let store = runHistoryStore else { return }
         store.append(
             RunRecord(
-                name: ctx.name,
+                name: context.name,
                 kind: .automation,
-                deviceId: ctx.deviceId,
-                deviceName: ctx.deviceName,
-                startedAt: ctx.startedAt,
-                endedAt: .now,
+                deviceId: context.deviceId,
+                deviceName: context.deviceName,
+                startedAt: context.startedAt,
+                endedAt: endedAt,
                 outcome: outcome,
                 log: log
             ),
-            deviceId: ctx.deviceId
+            deviceId: context.deviceId
         )
     }
 }

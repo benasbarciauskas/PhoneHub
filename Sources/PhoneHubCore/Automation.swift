@@ -117,23 +117,26 @@ public struct Automation: Codable, Equatable, Identifiable, Sendable {
     public var textSourceBindings: [UUID: TextSourceRef]
     public var pinned: Bool
     public var sourceGoal: String?
+    public var onSuccessCommand: String?
 
     public init(id: UUID = UUID(), name: String, platform: Platform, steps: [AutomationStep],
                 rawSteps: [AutomationStep]? = nil, useCondensed: Bool = true,
                 loop: LoopMode = .once, sharedCoordinates: Bool = false,
                 bindings: [String: [String: Binding]] = [:], pinned: Bool = false,
                 textSourceBindings: [UUID: TextSourceRef] = [:],
-                sourceGoal: String? = nil) {
+                sourceGoal: String? = nil,
+                onSuccessCommand: String? = nil) {
         self.id = id; self.name = name; self.platform = platform; self.steps = steps
         self.rawSteps = rawSteps; self.useCondensed = useCondensed; self.loop = loop
         self.sharedCoordinates = sharedCoordinates; self.bindings = bindings
         self.textSourceBindings = textSourceBindings
         self.pinned = pinned; self.sourceGoal = sourceGoal
+        self.onSuccessCommand = onSuccessCommand
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, platform, steps, rawSteps, useCondensed, loop
-        case sharedCoordinates, bindings, textSourceBindings, pinned, sourceGoal
+        case sharedCoordinates, bindings, textSourceBindings, pinned, sourceGoal, onSuccessCommand
     }
 
     public init(from decoder: Decoder) throws {
@@ -156,6 +159,7 @@ public struct Automation: Codable, Equatable, Identifiable, Sendable {
         ) ?? [:]
         pinned = try values.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
         sourceGoal = try values.decodeIfPresent(String.self, forKey: .sourceGoal)
+        onSuccessCommand = try values.decodeIfPresent(String.self, forKey: .onSuccessCommand)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -172,5 +176,6 @@ public struct Automation: Codable, Equatable, Identifiable, Sendable {
         try values.encode(textSourceBindings, forKey: .textSourceBindings)
         try values.encode(pinned, forKey: .pinned)
         try values.encodeIfPresent(sourceGoal, forKey: .sourceGoal)
+        try values.encodeIfPresent(onSuccessCommand, forKey: .onSuccessCommand)
     }
 }

@@ -30,7 +30,7 @@ final class IPhoneSwitcherTests: XCTestCase {
     func testContainmentMatchOnPartialName() {
         let menus = [
             ["Some Control"],
-            ["Benas’s iPhone 16 Pro", "Work iPhone"],
+            ["My iPhone 16 Pro", "Work iPhone"],
         ]
         let match = matchIPhonePopupMenuItem(
             targetNames: ["iPhone 16 Pro"],

@@ -75,4 +75,28 @@ final class TextSourceStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.add(name: " ", items: ["one"], mode: .static))
         XCTAssertThrowsError(try store.add(name: "Empty", items: [], mode: .static))
     }
+
+    @MainActor
+    func testRefreshReplacesItemsResetsCursorAndPersists() async throws {
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TextSourceStore(directory: directory)
+        var source = try store.add(name: "Captions", items: ["old", "stale"], mode: .cycle)
+        source.cursor = 1
+        source.refreshCommand = "next-captions"
+        store.update(source)
+
+        let count = try await store.refresh(source.id) { command, timeout in
+            XCTAssertEqual(command, "next-captions")
+            XCTAssertEqual(timeout, 30)
+            return CommandResult(exitCode: 0, stdout: Data(#"["fresh", "new"]"#.utf8), stderr: "")
+        }
+
+        XCTAssertEqual(count, 2)
+        XCTAssertEqual(store.sources.first?.items, ["fresh", "new"])
+        XCTAssertEqual(store.sources.first?.cursor, 0)
+        let reopened = TextSourceStore(directory: directory)
+        XCTAssertEqual(reopened.sources.first?.items, ["fresh", "new"])
+        XCTAssertEqual(reopened.sources.first?.cursor, 0)
+    }
 }
